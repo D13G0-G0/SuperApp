@@ -3,7 +3,6 @@ package com.superapp.api.logistics.dto;
 import java.math.BigDecimal;
 
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -12,9 +11,6 @@ import jakarta.validation.constraints.Size;
  *  2) Pedido libre: se envía title, pickupAddress y price (description es opcional).
  */
 public record CreateDeliveryRequest(
-        @NotNull(message = "El cliente es obligatorio")
-        Long customerId,
-
         Long listingId,
 
         @Size(max = 150, message = "El título no puede superar 150 caracteres")

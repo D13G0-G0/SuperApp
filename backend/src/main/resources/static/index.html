@@ -208,7 +208,7 @@ function demo(p,o={}){
 }
 async function api(p,o={}){
  try{
-  const r=await fetch('/api'+p,{...o,headers:{'Content-Type':'application/json'}});
+  const r=await fetch('/api'+p,{...o,headers:{'Content-Type':'application/json',...(S.user?{'X-User-Id':String(S.user.id)}:{})}});
   const d=await r.json().catch(()=>({}));
   if(!r.ok)throw Object.assign(new Error(d.error||d.detail||d.message||'No pudimos completar la acción. Revisa los datos e inténtalo de nuevo.'),{api:1,status:r.status});
   S.demo=false;return d;
@@ -254,7 +254,7 @@ $('#grid').onclick=e=>{const c=e.target.closest('.card');if(!c)return;const l=S.
  if($('#buy'))$('#buy').onclick=async()=>{
   if(!S.user.addressLine){closeS();toast('Agrega tu dirección de entrega para pedir');return go('me')}
   const b=$('#buy');b.disabled=true;b.textContent='Enviando…';
-  try{await api('/deliveries',{method:'POST',body:JSON.stringify({customerId:uid(),listingId:l.id})});closeS();toast('Pedido enviado');go('ord')}
+  try{await api('/deliveries',{method:'POST',body:JSON.stringify({listingId:l.id})});closeS();toast('Pedido enviado');go('ord')}
   catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Pedir ahora'}}};
 const closeS=()=>$('#sheet').classList.remove('on');
 $('#sheet').onclick=e=>e.target.id==='sheet'&&closeS();
@@ -274,7 +274,7 @@ $('#pubBtn').onclick=async()=>{
  const bad={pt:!v.t&&'Escribe un título.',pd:!v.d&&'Escribe una descripción.',pp:!(v.p>0)&&'Ingresa un precio mayor que 0.',pi:!/^https?:\/\//.test(v.i)&&'Pega un enlace que empiece por https://'};
  Object.entries(bad).forEach(([k,m])=>fail(k,m));if(Object.values(bad).some(Boolean))return;
  const b=$('#pubBtn');b.disabled=true;b.textContent='Publicando…';
- try{await api('/listings',{method:'POST',body:JSON.stringify({sellerId:S.user.id,title:v.t,description:v.d,price:v.p,category:$('#pc').value,imageUrl:v.i})});
+ try{await api('/listings',{method:'POST',body:JSON.stringify({title:v.t,description:v.d,price:v.p,category:$('#pc').value,imageUrl:v.i})});
   ['pt','pd','pp','pi'].forEach(k=>$('#'+k).value='');toast('Producto publicado');S.q='';S.cat='';$('#q').value='';chips();go('home')}
  catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Publicar producto'}
 };
@@ -333,10 +333,10 @@ async function fill(id,path,empty,fn,quiet){
  catch(e){el.innerHTML=`<div class="empty">${esc(e.message)}</div>`}
 }
 const LOAD={home:load,
- ord:q=>fill('#ordList',`/deliveries/customer/${uid()}`,'Aún no tienes pedidos. Crea el primero con el botón de arriba.',o=>oCard(o,'ord',o.status==='PENDING'?ob(o.id,'CANCELLED','Cancelar pedido','s'):''),q),
+ ord:q=>fill('#ordList','/deliveries/mine','Aún no tienes pedidos. Crea el primero con el botón de arriba.',o=>oCard(o,'ord',o.status==='PENDING'?ob(o.id,'CANCELLED','Cancelar pedido','s'):''),q),
  av:q=>fill('#avList','/deliveries/available','No hay pedidos por ahora. Esta lista se actualiza sola.',o=>oCard(o,'av',ob(o.id,'ACCEPTED','Aceptar entrega')),q),
  dl:async q=>{
-  const d=await fill('#dlList',`/deliveries/driver/${uid()}`,'Todavía no tienes entregas. Acepta una en Disponibles.',o=>oCard(o,'dl',o.status==='ACCEPTED'?ob(o.id,'PICKED_UP','Marcar como recogido'):o.status==='PICKED_UP'?ob(o.id,'DELIVERED','Marcar como entregado'):''),q);
+  const d=await fill('#dlList','/deliveries/assigned','Todavía no tienes entregas. Acepta una en Disponibles.',o=>oCard(o,'dl',o.status==='ACCEPTED'?ob(o.id,'PICKED_UP','Marcar como recogido'):o.status==='PICKED_UP'?ob(o.id,'DELIVERED','Marcar como entregado'):''),q);
   if(d){const ok=d.filter(o=>o.status==='DELIVERED');$('#dlSum').innerHTML=`<div class="sum"><div><b>${ok.length}</b><span>Entregas hechas</span></div><div><b>${COP(ok.reduce((t,o)=>t+ +o.deliveryFee,0))}</b><span>Ganado</span></div></div>`}}};
 $('main').addEventListener('click',async e=>{
  const o=e.target.closest('[data-open]');if(o)return go(o.dataset.open);
@@ -344,7 +344,7 @@ $('main').addEventListener('click',async e=>{
  const b=e.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,v=cur();if(a==='CANCELLED'&&!confirm('¿Cancelar este pedido?'))return;
  b.disabled=true;let ok=false;
- try{await api(`/deliveries/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({userId:uid(),status:a})});toast(MSG[a]);ok=true}catch(err){toast(err.message)}
+ try{await api(`/deliveries/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:a})});toast(MSG[a]);ok=true}catch(err){toast(err.message)}
  if(ok&&a==='ACCEPTED')go('dl');else if(LOAD[v]&&cur()===v)LOAD[v]();
 });
 setInterval(()=>{if(S.user&&!document.hidden&&!$('#login').classList.contains('on')&&['ord','av','dl'].includes(cur()))LOAD[cur()](true)},10000);
@@ -360,7 +360,7 @@ $('#nBtn').onclick=async()=>{
  const bad={nt:!t&&'Escribe qué necesitas.',nk:!pk&&'Indica dónde recogerlo.',np:!(pr>0)&&'Ingresa un valor mayor que 0.'};
  Object.entries(bad).forEach(([k,m])=>fail(k,m));if(Object.values(bad).some(Boolean))return;
  const b=$('#nBtn');b.disabled=true;b.textContent='Creando…';
- try{await api('/deliveries',{method:'POST',body:JSON.stringify({customerId:uid(),title:t,description:$('#nd').value.trim()||null,pickupAddress:pk,price:pr})});
+ try{await api('/deliveries',{method:'POST',body:JSON.stringify({title:t,description:$('#nd').value.trim()||null,pickupAddress:pk,price:pr})});
   ['nt','nd','nk','np'].forEach(k=>$('#'+k).value='');toast('Pedido creado');go('ord')}
  catch(e){toast(e.message)}finally{b.disabled=!S.user.addressLine;b.textContent='Crear pedido'}
 };

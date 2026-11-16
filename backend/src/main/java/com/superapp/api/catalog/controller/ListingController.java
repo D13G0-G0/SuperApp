@@ -17,6 +17,8 @@ import com.superapp.api.catalog.dto.CreateListingRequest;
 import com.superapp.api.catalog.dto.ListingResponse;
 import com.superapp.api.catalog.service.ListingService;
 
+import com.superapp.api.shared.security.CurrentUser;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -26,11 +28,12 @@ import lombok.RequiredArgsConstructor;
 public class ListingController {
 
     private final ListingService listingService;
+    private final CurrentUser currentUser;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ListingResponse createListing(@Valid @RequestBody CreateListingRequest request) {
-        return listingService.createListing(request);
+        return listingService.createListing(currentUser.id(), request);
     }
 
     @GetMapping

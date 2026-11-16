@@ -8,9 +8,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record CreateListingRequest(
-        @NotNull(message = "El vendedor es obligatorio")
-        Long sellerId,
-
         @NotBlank(message = "El título es obligatorio")
         @Size(max = 150, message = "El título no puede superar 150 caracteres")
         String title,

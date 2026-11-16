@@ -38,8 +38,8 @@ public class DeliveryService {
     private final ListingRepository listingRepository;
 
     @Transactional
-    public DeliveryResponse create(CreateDeliveryRequest request) {
-        User customer = findUser(request.customerId());
+    public DeliveryResponse create(Long customerId, CreateDeliveryRequest request) {
+        User customer = findUser(customerId);
         if (!customer.getRoles().contains(Role.CUSTOMER)) {
             throw new ForbiddenOperationException("Solo un usuario con rol CUSTOMER puede hacer pedidos");
         }
@@ -109,8 +109,8 @@ public class DeliveryService {
     }
 
     @Transactional
-    public DeliveryResponse changeStatus(Long orderId, DeliveryStatusRequest request) {
-        User user = findUser(request.userId());
+    public DeliveryResponse changeStatus(Long userId, Long orderId, DeliveryStatusRequest request) {
+        User user = findUser(userId);
         DeliveryOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado: " + orderId));
 

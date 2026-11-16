@@ -27,9 +27,9 @@ public class ListingService {
     private final UserRepository userRepository;
 
     @Transactional
-    public ListingResponse createListing(CreateListingRequest request) {
-        User seller = userRepository.findById(request.sellerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + request.sellerId()));
+    public ListingResponse createListing(Long sellerId, CreateListingRequest request) {
+        User seller = userRepository.findById(sellerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + sellerId));
 
         // Pueden publicar los vendedores y también los clientes
         if (!seller.getRoles().contains(Role.SELLER) && !seller.getRoles().contains(Role.CUSTOMER)) {

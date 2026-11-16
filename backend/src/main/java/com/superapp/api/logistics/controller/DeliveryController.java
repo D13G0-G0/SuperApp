@@ -17,6 +17,8 @@ import com.superapp.api.logistics.dto.DeliveryResponse;
 import com.superapp.api.logistics.dto.DeliveryStatusRequest;
 import com.superapp.api.logistics.service.DeliveryService;
 
+import com.superapp.api.shared.security.CurrentUser;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -25,37 +27,38 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class DeliveryController {
 
-    private final DeliveryService orderService;
+    private final DeliveryService deliveryService;
+    private final CurrentUser currentUser;
 
     // Cliente: hace un pedido
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public DeliveryResponse create(@Valid @RequestBody CreateDeliveryRequest request) {
-        return orderService.create(request);
+        return deliveryService.create(currentUser.id(), request);
     }
 
     // Conductor: pedidos que aún no tienen conductor
     @GetMapping("/available")
     public List<DeliveryResponse> available() {
-        return orderService.available();
+        return deliveryService.available();
     }
 
     // Cliente: sus pedidos
-    @GetMapping("/customer/{customerId}")
-    public List<DeliveryResponse> byCustomer(@PathVariable Long customerId) {
-        return orderService.byCustomer(customerId);
+    @GetMapping("/mine")
+    public List<DeliveryResponse> mine() {
+        return deliveryService.byCustomer(currentUser.id());
     }
 
     // Conductor: sus entregas
-    @GetMapping("/driver/{driverId}")
-    public List<DeliveryResponse> byDriver(@PathVariable Long driverId) {
-        return orderService.byDriver(driverId);
+    @GetMapping("/assigned")
+    public List<DeliveryResponse> assigned() {
+        return deliveryService.byDriver(currentUser.id());
     }
 
     // Cambia el estado: ACCEPTED, PICKED_UP, DELIVERED (conductor) o CANCELLED (cliente)
     @PatchMapping("/{orderId}/status")
     public DeliveryResponse changeStatus(@PathVariable Long orderId,
                                       @Valid @RequestBody DeliveryStatusRequest request) {
-        return orderService.changeStatus(orderId, request);
+        return deliveryService.changeStatus(currentUser.id(), orderId, request);
     }
 }
