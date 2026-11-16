@@ -1,0 +1,27 @@
+# Build
+target/
+build/
+out/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+.nb-gradle/
+nbproject/private/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Secretos y entornos locales
+.env
+.env.*
+!.env.example
+local.properties
