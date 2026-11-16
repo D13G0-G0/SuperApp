@@ -40,6 +40,13 @@ public class UserService {
         return toResponse(findUser(userId));
     }
 
+    @Transactional(readOnly = true)
+    public UserResponse getByEmail(String email) {
+        return userRepository.findByEmailIgnoreCase(email.trim())
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe una cuenta con ese correo"));
+    }
+
     @Transactional
     public UserResponse updateShippingAddress(Long userId, ShippingAddressRequest request) {
         User user = findUser(userId);

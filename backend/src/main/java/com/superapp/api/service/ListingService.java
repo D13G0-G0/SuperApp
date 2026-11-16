@@ -31,8 +31,9 @@ public class ListingService {
         User seller = userRepository.findById(request.sellerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + request.sellerId()));
 
-        if (!seller.getRoles().contains(Role.SELLER)) {
-            throw new ForbiddenOperationException("Solo un usuario con rol SELLER puede publicar productos");
+        // Pueden publicar los vendedores y también los clientes
+        if (!seller.getRoles().contains(Role.SELLER) && !seller.getRoles().contains(Role.CUSTOMER)) {
+            throw new ForbiddenOperationException("Solo un cliente o un vendedor puede publicar productos");
         }
 
         Listing listing = new Listing();
