@@ -138,7 +138,7 @@ nav button[aria-current=page]{color:var(--p)}
   <h1>Mi perfil</h1>
   <div id="meBody"></div>
  </section>
-<section class="view" id="v-ord" aria-label="Mis pedidos"><div class="vh"><h1>Mis pedidos</h1><button class="btn s sm" data-refresh>Actualizar</button></div><button class="btn" data-open="new" style="margin-bottom:14px">Crear pedido</button><div id="ordList" aria-live="polite"></div></section>
+<section class="view" id="v-ord" aria-label="Pedidos"><div class="vh"><h1>Pedidos</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div class="chips" id="otabs" role="group" aria-label="Carrito, compras y ventas" style="padding-top:0;margin-bottom:12px"></div><div id="ordList" aria-live="polite"></div></section>
  <section class="view" id="v-av" aria-label="Pedidos disponibles"><div class="vh"><h1>Disponibles</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="avList" aria-live="polite"></div></section>
  <section class="view" id="v-dl" aria-label="Mis entregas"><div class="vh"><h1>Mis entregas</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="dlSum"></div><div id="dlList" aria-live="polite"></div></section>
 <section class="view" id="v-new" aria-label="Crear pedido">
@@ -232,13 +232,14 @@ async function load(){
 }
 const img=l=>l.imageUrl?`<img class="ph" src="${esc(l.imageUrl)}" alt="${esc(l.title)}" loading="lazy" onerror="this.outerHTML='<div class=ph>${esc(l.title[0]||'?')}</div>'">`:`<div class="ph">${esc(l.title[0]||'?')}</div>`;
 $('#grid').onclick=e=>{const c=e.target.closest('.card');if(!c)return;const l=S.items.find(x=>x.id==c.dataset.id);
- $('#sp').innerHTML=`<button class="btn s sm" id="x">Cerrar</button>${img(l)}<span class="pill">${esc(l.category)}</span><h1 style="margin:4px 0">${esc(l.title)}</h1><div style="font-size:22px;font-weight:800;color:var(--p)">${COP(l.price)}</div><p class="h" style="margin:2px 0 10px">Vendido por ${esc(l.sellerName)}</p><p style="margin-bottom:16px">${esc(l.description)}</p>${l.sellerId===uid()?'<div class="note">Este producto lo publicaste tú.</div>':'<button class="btn" id="buy">Pedir ahora</button><button class="btn s" id="wp" style="margin-top:10px">Pagar con billetera</button>'}`;
- $('#sheet').classList.add('on');$('#x').focus();$('#x').onclick=closeS;if($('#wp'))$('#wp').onclick=()=>{closeS();S.need={title:l.title,price:+l.price};$('#am').value='';go('pay')};
- if($('#buy'))$('#buy').onclick=async()=>{
-  if(!S.user.addressLine){closeS();toast('Agrega tu dirección de entrega para pedir');return go('me')}
-  const b=$('#buy');b.disabled=true;b.textContent='Enviando…';
-  try{await api('/deliveries',{method:'POST',body:JSON.stringify({listingId:l.id})});closeS();toast('Pedido enviado');go('ord')}
-  catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Pedir ahora'}}};
+ $('#sp').innerHTML=`<button class="btn s sm" id="x">Cerrar</button>${img(l)}<span class="pill">${esc(l.category)}</span><h1 style="margin:4px 0">${esc(l.title)}</h1><div style="font-size:22px;font-weight:800;color:var(--p)">${COP(l.price)}</div><p class="h" style="margin:2px 0 10px">Vendido por ${esc(l.sellerName)}</p><p style="margin-bottom:16px">${esc(l.description)}</p>${l.sellerId===uid()?'<div class="note">Este producto lo publicaste tú.</div>':'<button class="btn" id="wp">Comprar ahora</button><button class="btn s" id="buy" style="margin-top:10px">Agregar al carrito</button>'}`;
+ $('#sheet').classList.add('on');$('#x').focus();$('#x').onclick=closeS;
+ const add=async(b,txt,after)=>{if(!has('CUSTOMER')){toast('Para comprar necesitas una cuenta de cliente');return}
+  b.disabled=true;b.textContent='Agregando…';
+  try{await api('/cart/items',{method:'POST',body:JSON.stringify({listingId:l.id})});closeS();after()}
+  catch(e){toast(e.message)}finally{b.disabled=false;b.textContent=txt}};
+ if($('#buy'))$('#buy').onclick=()=>add($('#buy'),'Agregar al carrito',()=>toast('Agregado al carrito'));
+ if($('#wp'))$('#wp').onclick=()=>add($('#wp'),'Comprar ahora',()=>{S.otab='cart';go('ord')})};
 const closeS=()=>$('#sheet').classList.remove('on');
 $('#sheet').onclick=e=>e.target.id==='sheet'&&closeS();
 addEventListener('keydown',e=>e.key==='Escape'&&closeS());
@@ -346,8 +347,49 @@ async function fill(id,path,empty,fn,quiet){
  try{const d=await api(path);el.innerHTML=d.length?d.map(fn).join(''):`<div class="empty">${empty}</div>`;return d}
  catch(e){el.innerHTML=`<div class="empty">${esc(e.message)}</div>`}
 }
-const LOAD={home:load,pay:wallet,
- ord:q=>fill('#ordList','/deliveries/mine','Aún no tienes pedidos. Crea el primero con el botón de arriba.',o=>oCard(o,'ord',o.status==='PENDING'?ob(o.id,'CANCELLED','Cancelar pedido','s'):''),q),
+/* ---------- Pedidos (FR-05, FR-06): carrito, compras y ventas ---------- */
+const OST={PAID:'Pagado',SHIPPED:'Enviado',DELIVERED:'Entregado',CANCELLED:'Cancelado'},OSTEPS=['PAID','SHIPPED','DELIVERED'];
+const OACT={buyer:{DELIVERED:['Confirmar que lo recibí',''],CANCELLED:['Cancelar compra','s']},seller:{SHIPPED:['Marcar como enviado',''],CANCELLED:['Cancelar venta','s']}};
+const OMSG={SHIPPED:'Pedido marcado como enviado',DELIVERED:'Entrega confirmada: el vendedor recibió el pago',CANCELLED:'Pedido cancelado: el dinero volvió al comprador'};
+function otabs(){const t=[['cart','Carrito'],['buy','Compras'],...(has('SELLER')?[['sell','Ventas']]:[])];if(!t.some(x=>x[0]===S.otab))S.otab='cart';
+ $('#otabs').innerHTML=t.map(([k,n])=>`<button class="chip" aria-pressed="${k===S.otab}" data-ot="${k}">${n}</button>`).join('')}
+$('#otabs').onclick=e=>{const b=e.target.closest('[data-ot]');if(b){S.otab=b.dataset.ot;orders()}};
+const otrack=o=>o.status==='CANCELLED'?'':`<div class="trk" role="img" aria-label="Estado: ${OST[o.status]}">${OSTEPS.map((x,j)=>`<i class="${j<=OSTEPS.indexOf(o.status)?'on':''}"></i>`).join('')}</div>`;
+function orderCard(o,who){
+ const acts=o.nextStatuses.map(s=>{const[t,c]=OACT[who][s]||[s,''];return `<button class="btn ${c}" data-ost="${s}" data-oid="${o.id}" data-who="${who}">${t}</button>`}).join('');
+ const hint=who==='buyer'?{PAID:'Esperando que el vendedor lo envíe. Tu dinero queda retenido hasta que confirmes la entrega.',SHIPPED:'Ya viene en camino. Confírmalo cuando lo recibas.'}[o.status]:{PAID:'Ya está pagado. Envíalo y márcalo como enviado.',SHIPPED:'Recibirás el dinero cuando el comprador confirme la entrega.'}[o.status];
+ return `<div class="note oc"><div class="row" style="align-items:center;gap:8px"><b>Pedido #${o.id}</b><span class="pill" style="flex:none;margin:0">${OST[o.status]}</span></div>${otrack(o)}
+${o.items.map(i=>`<div class="h">${esc(i.title)} · ${COP(i.price)}</div>`).join('')}<div class="h"><b>Total: ${COP(o.total)}</b> · ${when(o.createdAt)}</div>${hint?`<div class="h">${hint}</div>`:''}${acts}</div>`;
+}
+async function cartView(){
+ const el=$('#ordList');
+ try{const c=await api('/cart');
+  if(!c.items.length){el.innerHTML='<div class="empty">Tu carrito está vacío. Busca productos en Inicio y agrégalos.</div>';return}
+  const lines=c.items.map(i=>`<div class="mi">${img(i)}<div class="t"><b>${esc(i.title)}</b><span>${i.available?COP(i.price)+' · '+esc(i.sellerName):'Ya no está disponible'}</span></div><div class="a"><button class="btn s" data-rm="${i.listingId}" aria-label="Quitar ${esc(i.title)}">Quitar</button></div></div>`).join('');
+  const pay=c.total>0?(c.enoughBalance?`<button class="btn" id="chk">Pagar ${COP(c.total)} con billetera</button>`
+   :`<div class="note">Tu saldo es ${COP(c.balance)} y el total es ${COP(c.total)}. Te faltan <b>${COP(c.total-c.balance)}</b>.</div><button class="btn" id="topup">Recargar billetera</button>`):'';
+  el.innerHTML=`${lines}<div class="sum"><div><b>${COP(c.total)}</b><span>Total</span></div><div><b>${COP(c.balance)}</b><span>Tu saldo</span></div></div>${pay}<p class="h" style="margin-top:8px">Se crea un pedido por cada vendedor. Si algo ya se vendió, no se cobra nada.</p><div id="chkRes" aria-live="polite"></div>`;
+  if($('#topup'))$('#topup').onclick=()=>{S.need={title:'Tu carrito',price:+c.total};$('#am').value='';go('pay')};
+  if($('#chk'))$('#chk').onclick=async()=>{const b=$('#chk');b.disabled=true;b.textContent='Pagando…';
+   try{const d=await api('/orders/checkout',{method:'POST'});toast(`Compra lista: ${d.orders.length} pedido${d.orders.length>1?'s':''}. Saldo: ${COP(d.balance)}`);S.otab='buy';orders()}
+   catch(e){await cartView();const r=$('#chkRes')||$('#ordList');r.insertAdjacentHTML('beforeend',`<div class="res no"><b>No se hizo la compra</b>${esc(e.message)}</div>`)}}}
+ catch(e){el.innerHTML=`<div class="empty">${esc(e.message)}</div>`}
+}
+function orders(q){
+ otabs();if(!q)$('#ordList').innerHTML='<div class="sk" style="height:120px;margin-bottom:12px"></div>'.repeat(2);
+ if(S.otab==='cart')return q?null:cartView();
+ if(S.otab==='buy')return fill('#ordList','/orders','Todavía no has comprado nada.',o=>orderCard(o,'buyer'),q);
+ return fill('#ordList','/sales','Todavía no has vendido nada.',o=>orderCard(o,'seller'),q);
+}
+$('#ordList').addEventListener('click',async e=>{
+ const r=e.target.closest('[data-rm]');if(r){r.disabled=true;try{await api('/cart/items/'+r.dataset.rm,{method:'DELETE'});cartView()}catch(err){toast(err.message);r.disabled=false}return}
+ const b=e.target.closest('[data-ost]');if(!b)return;
+ const s=b.dataset.ost,who=b.dataset.who;if(s==='CANCELLED'&&!confirm('¿Cancelar este pedido? El dinero vuelve al comprador.'))return;
+ b.disabled=true;
+ try{await api(`/${who==='buyer'?'orders':'sales'}/${b.dataset.oid}/status`,{method:'PATCH',body:JSON.stringify({status:s})});toast(OMSG[s]);orders(true)}
+ catch(err){toast(err.message);b.disabled=false}
+});
+const LOAD={home:load,pay:wallet,ord:orders,
  av:q=>fill('#avList','/deliveries/available','No hay pedidos por ahora. Esta lista se actualiza sola.',o=>oCard(o,'av',ob(o.id,'ACCEPTED','Aceptar entrega')),q),
  dl:async q=>{
   const d=await fill('#dlList','/deliveries/assigned','Todavía no tienes entregas. Acepta una en Disponibles.',o=>oCard(o,'dl',o.status==='ACCEPTED'?ob(o.id,'PICKED_UP','Marcar como recogido'):o.status==='PICKED_UP'?ob(o.id,'DELIVERED','Marcar como entregado'):''),q);
