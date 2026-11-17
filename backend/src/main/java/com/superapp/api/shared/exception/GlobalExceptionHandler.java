@@ -1,14 +1,26 @@
 package com.superapp.api.shared.exception;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    /** Errores de validación: "error" = primer mensaje y "fields" = un mensaje por campo. */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        ex.getBindingResult().getFieldErrors()
+                .forEach(e -> fields.putIfAbsent(e.getField(), e.getDefaultMessage()));
+        String first = fields.isEmpty() ? "Revisa los datos" : fields.values().iterator().next();
+        return ResponseEntity.badRequest().body(Map.of("error", first, "fields", fields));
+    }
 
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<Map<String, String>> handleUnauthorized(UnauthorizedException ex) {

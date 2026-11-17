@@ -26,6 +26,8 @@ services:
       DB_URL: jdbc:postgresql://db:5432/superapp
       DB_USER: superapp
       DB_PASSWORD: superapp
+      # Secreto SOLO de desarrollo. En un servidor real se cambia por uno largo y aleatorio.
+      JWT_SECRET: desarrollo-superapp-cambiar-en-produccion-0123456789
     ports:
       - "8080:8080"
 

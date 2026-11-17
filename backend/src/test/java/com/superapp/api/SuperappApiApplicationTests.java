@@ -32,7 +32,7 @@ class SuperappApiApplicationTests {
 
 	@Test
 	void seedHasOneAccountPerRole() {
-		assertThat(userRepository.findAll()).hasSize(4);
+		assertThat(userRepository.findAll()).filteredOn(u -> u.getEmail().endsWith("@superapp.test")).hasSize(4);
 		assertThat(userRepository.findByEmailIgnoreCase("admin@superapp.test")).get()
 				.satisfies(u -> assertThat(u.getRoles()).containsExactly(Role.ADMIN));
 		assertThat(userRepository.findByEmailIgnoreCase("vendedor@superapp.test")).get()

@@ -9,7 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
-public record CreateUserRequest(
+public record RegisterRequest(
         @NotBlank(message = "El nombre es obligatorio")
         @Size(max = 100, message = "El nombre no puede superar 100 caracteres")
         String fullName,
@@ -18,7 +18,12 @@ public record CreateUserRequest(
         @Email(message = "El correo no es válido")
         String email,
 
-        @NotEmpty(message = "Debes elegir al menos un rol")
+        // BCrypt solo usa los primeros 72 bytes
+        @NotBlank(message = "La contraseña es obligatoria")
+        @Size(min = 8, max = 72, message = "La contraseña debe tener entre 8 y 72 caracteres")
+        String password,
+
+        @NotEmpty(message = "Debes elegir al menos un tipo de cuenta")
         Set<Role> roles
 ) {
 }

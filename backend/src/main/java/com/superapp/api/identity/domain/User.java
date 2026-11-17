@@ -36,6 +36,10 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    // Hash BCrypt de la contraseña (nunca la contraseña en texto plano)
+    @Column(name = "password_hash", nullable = false, length = 100)
+    private String passwordHash;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Enumerated(EnumType.STRING)
