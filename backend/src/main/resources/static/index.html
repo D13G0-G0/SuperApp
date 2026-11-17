@@ -150,7 +150,7 @@ nav button[aria-current=page]{color:var(--p)}
  </section>
 <section class="view" id="v-ord" aria-label="Pedidos"><div class="vh"><h1>Pedidos</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div class="chips" id="otabs" role="group" aria-label="Carrito, compras y ventas" style="padding-top:0;margin-bottom:12px"></div><div id="ordList" aria-live="polite"></div></section>
  <section class="view" id="v-av" aria-label="Pedidos disponibles"><div class="vh"><h1>Disponibles</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="avList" aria-live="polite"></div></section>
- <section class="view" id="v-dl" aria-label="Mis entregas"><div class="vh"><h1>Mis entregas</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="dlSum"></div><div id="dlList" aria-live="polite"></div></section>
+ <section class="view" id="v-dl" aria-label="Mis entregas"><div class="vh"><h1>Mis entregas</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="dlSum"></div><div id="dlList" aria-live="polite"></div><button class="btn s" data-open="his" style="margin-top:10px">Ver mi historial</button></section>
 <section class="view" id="v-new" aria-label="Crear pedido">
   <h1>Crear pedido</h1>
   <p class="h" style="margin:-8px 0 14px;font-size:14px">Cuéntanos qué necesitas y un conductor lo llevará a tu dirección.</p>
@@ -404,8 +404,8 @@ $('#ordList').addEventListener('click',async e=>{
  catch(err){toast(err.message);b.disabled=false}
 });
 /* ---------- Historial (FR-08) ---------- */
-const HT=[['','Todo'],['PURCHASE','Compras'],['SALE','Ventas'],['WALLET','Billetera']],HN={PURCHASE:'Compra',SALE:'Venta',WALLET:'Billetera',DELIVERY:'Domicilio'};
-function htabs(){$('#htabs').innerHTML=HT.filter(([k])=>k!=='SALE'||has('SELLER')).map(([k,n])=>`<button class="chip" aria-pressed="${k===(S.htype||'')}" data-ht="${k}">${n}</button>`).join('')}
+const HT=[['','Todo'],['PURCHASE','Compras'],['SALE','Ventas'],['WALLET','Billetera'],['DELIVERY','Domicilios']],HN={PURCHASE:'Compra',SALE:'Venta',WALLET:'Billetera',DELIVERY:'Domicilio'};
+function htabs(){$('#htabs').innerHTML=HT.filter(([k])=>S.user?.mode==='DRIVER'?(k===''||k==='DELIVERY'):(k!=='SALE'||has('SELLER'))).map(([k,n])=>`<button class="chip" aria-pressed="${k===(S.htype||'')}" data-ht="${k}">${n}</button>`).join('')}
 $('#htabs').onclick=e=>{const b=e.target.closest('[data-ht]');if(b){S.htype=b.dataset.ht;hist()}};
 $('#hFrom').onchange=$('#hTo').onchange=()=>hist();
 function hisItem(h){
