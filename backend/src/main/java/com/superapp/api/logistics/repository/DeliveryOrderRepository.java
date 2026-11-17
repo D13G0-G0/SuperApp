@@ -9,6 +9,8 @@ import com.superapp.api.logistics.domain.DeliveryStatus;
 
 public interface DeliveryOrderRepository extends JpaRepository<DeliveryOrder, Long> {
 
+    boolean existsByListingId(Long listingId);
+
     List<DeliveryOrder> findByStatusOrderByCreatedAtDesc(DeliveryStatus status);
 
     List<DeliveryOrder> findByCustomerIdOrderByCreatedAtDesc(Long customerId);

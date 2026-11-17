@@ -12,6 +12,9 @@ import com.superapp.api.catalog.domain.ListingStatus;
 
 public interface ListingRepository extends JpaRepository<Listing, Long> {
 
+    /** "Mis publicaciones": todas las del vendedor menos las borradas. */
+    List<Listing> findBySellerIdAndStatusNotOrderByCreatedAtDesc(Long sellerId, ListingStatus status);
+
     @Query("""
             SELECT l FROM Listing l
             WHERE l.status = :status

@@ -1,8 +1,10 @@
 package com.superapp.api.identity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -90,6 +92,34 @@ class AuthSecurityTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.sellerName").value("Valentín Vendedor"));
         mvc.perform(get("/api/listings")).andExpect(status().isOk());
+    }
+
+    @Test
+    void sellerCrudAndFieldErrors() throws Exception {
+        String seller = login("vendedor@superapp.test", "Demo1234");
+        String customer = login("cliente@superapp.test", "Demo1234");
+        String body = mvc.perform(post("/api/listings").header("Authorization", "Bearer " + seller)
+                        .contentType(MediaType.APPLICATION_JSON).content(NEW_LISTING))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        Integer id = JsonPath.read(body, "$.id");
+
+        mvc.perform(get("/api/listings/mine").header("Authorization", "Bearer " + seller))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(7));
+        mvc.perform(put("/api/listings/" + id).header("Authorization", "Bearer " + seller)
+                        .contentType(MediaType.APPLICATION_JSON).content(NEW_LISTING.replace("Silla\"", "Silla roja\"")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Silla roja"));
+        // Sin foto y precio 0: un mensaje por campo
+        mvc.perform(put("/api/listings/" + id).header("Authorization", "Bearer " + seller)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Silla\",\"description\":\"d\",\"price\":0,\"category\":\"Hogar\",\"imageUrl\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fields.price").value("El precio debe ser mayor que 0"))
+                .andExpect(jsonPath("$.fields.imageUrl").value("Debes incluir una foto"));
+        mvc.perform(delete("/api/listings/" + id).header("Authorization", "Bearer " + customer))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete("/api/listings/" + id).header("Authorization", "Bearer " + seller))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/listings/" + id)).andExpect(status().isNotFound());
     }
 
     @Test
