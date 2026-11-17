@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.superapp.api.catalog.api.ICatalog;
+import com.superapp.api.history.api.HistoryType;
+import com.superapp.api.history.api.IHistory;
 import com.superapp.api.orders.domain.Order;
 import com.superapp.api.orders.domain.OrderItem;
 import com.superapp.api.orders.domain.OrderStateMachine.Party;
@@ -26,6 +28,7 @@ public class OrderService {
     private final OrderRepository orders;
     private final IWallet wallet;
     private final ICatalog catalog;
+    private final IHistory history;
 
     @Transactional(readOnly = true)
     public List<OrderResponse> purchases(Long buyerId) {
@@ -58,13 +61,26 @@ public class OrderService {
         }
         order.moveTo(next, party);
         String ref = "ORDER-" + order.getId();
-        if (next == OrderStatus.DELIVERED) {
-            wallet.credit(order.getSellerId(), CreditType.INCOME, order.getTotal(),
-                    "Venta: " + CheckoutService.summary(order), ref);
+        String what = CheckoutService.summary(order);
+        String id = "#" + order.getId();
+        Long buyer = order.getBuyerId();
+        Long seller = order.getSellerId();
+        if (next == OrderStatus.SHIPPED) {
+            history.record(buyer, HistoryType.PURCHASE, "Tu pedido " + id + " va en camino", what, null, ref);
+            history.record(seller, HistoryType.SALE, "Enviaste el pedido " + id, what, null, ref);
+        } else if (next == OrderStatus.DELIVERED) {
+            wallet.credit(seller, CreditType.INCOME, order.getTotal(), "Venta: " + what, ref);
+            history.record(buyer, HistoryType.PURCHASE, "Recibiste el pedido " + id, what, null, ref);
+            history.record(seller, HistoryType.SALE, "Te pagaron el pedido " + id, what, order.getTotal(), ref);
         } else if (next == OrderStatus.CANCELLED) {
-            wallet.credit(order.getBuyerId(), CreditType.REFUND, order.getTotal(),
-                    "Reembolso: " + CheckoutService.summary(order), ref);
+            wallet.credit(buyer, CreditType.REFUND, order.getTotal(), "Reembolso: " + what, ref);
             catalog.release(order.getItems().stream().map(OrderItem::getListingId).toList());
+            String by = party == Party.BUYER ? "Lo cancelaste tú" : "Lo canceló el vendedor";
+            String bySeller = party == Party.SELLER ? "Lo cancelaste tú" : "Lo canceló el comprador";
+            history.record(buyer, HistoryType.PURCHASE, "Pedido " + id + " cancelado: te devolvimos el dinero",
+                    by + " · " + what, order.getTotal(), ref);
+            history.record(seller, HistoryType.SALE, "Pedido " + id + " cancelado",
+                    bySeller + " · la publicación volvió a la venta", null, ref);
         }
         return OrderResponse.of(order, userId);
     }

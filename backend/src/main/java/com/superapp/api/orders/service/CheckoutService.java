@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.superapp.api.catalog.api.ICatalog;
 import com.superapp.api.catalog.api.ICatalog.ListingView;
+import com.superapp.api.history.api.HistoryType;
+import com.superapp.api.history.api.IHistory;
 import com.superapp.api.orders.domain.CartItem;
 import com.superapp.api.orders.domain.ListingUnavailableException;
 import com.superapp.api.orders.domain.Order;
@@ -44,6 +46,7 @@ public class CheckoutService {
     private final OrderRepository orders;
     private final ICatalog catalog;
     private final IWallet wallet;
+    private final IHistory history;
 
     // noRollbackFor: si hay publicaciones no disponibles, lo único que se guarda es sacarlas del carrito
     // (antes de ese punto no se escribió nada más).
@@ -88,6 +91,12 @@ public class CheckoutService {
             // Si no alcanza el saldo lanza InsufficientBalanceException y la transacción entera se deshace.
             last = wallet.debit(buyerId, order.getTotal(), "Compra: " + summary(order), "ORDER-" + order.getId());
             charged = charged.add(order.getTotal());
+            String ref = "ORDER-" + order.getId();
+            history.record(buyerId, HistoryType.PURCHASE, "Compraste " + summary(order),
+                    "Pedido #" + order.getId() + " pagado con tu billetera", order.getTotal().negate(), ref);
+            history.record(order.getSellerId(), HistoryType.SALE, "Vendiste " + summary(order),
+                    "Pedido #" + order.getId() + ": recibes el dinero cuando el comprador confirme la entrega",
+                    null, ref);
             created.add(order);
         }
 
