@@ -84,6 +84,7 @@ nav button[aria-current=page]{color:var(--p)}
 .trk{display:flex;gap:4px;margin:10px 0 8px}.trk i{flex:1;height:5px;border-radius:9px;background:var(--ln)}.trk i.on{background:var(--p)}
 .oc .btn{margin-top:10px}.oc .h{margin:2px 0}
 .sum{display:flex;gap:10px;margin-bottom:12px}.sum div{flex:1;background:var(--pl);border-radius:14px;padding:12px}.sum b{display:block;font-size:20px;font-weight:800;color:var(--p)}.sum span{font-size:13px;color:var(--mu)}
+.mi{display:flex;gap:12px;align-items:center;background:var(--sf);border:1px solid var(--ln);border-radius:14px;padding:10px;margin-bottom:10px}.mi .ph{width:64px;height:64px;aspect-ratio:auto;border-radius:10px;font-size:20px;flex:none}.mi .t{flex:1;min-width:0}.mi .t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mi .t span{font-size:13px;color:var(--mu)}.mi .a{display:flex;flex-direction:column;gap:6px;flex:none}.mi .a .btn{height:34px;padding:0 12px;font-size:13px}.btn.d{background:var(--erb);color:var(--er)}
 .vh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:6px 0 14px}.vh h1{margin:0}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -99,21 +100,22 @@ nav button[aria-current=page]{color:var(--p)}
   <div class="note" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div><b>¿Necesitas algo?</b><div class="h" style="margin:0">Crea un pedido y un conductor lo lleva.</div></div><button class="btn sm" data-open="new" style="flex:none">Crear pedido</button></div>
   <div class="search"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Busca comida, mercado, tecnología…" aria-label="Buscar productos"></div>
   <div class="chips" id="chips" role="group" aria-label="Categorías"></div>
-  <div class="banner" id="demo" hidden>Sin conexión con el servidor: ves datos de ejemplo. Inicia el backend para usar datos reales.</div>
   <div class="grid" id="grid" aria-live="polite"></div>
  </section>
 
- <section class="view" id="v-pub" aria-label="Publicar">
-  <h1>Publicar producto</h1>
-  <p class="h" style="margin:-8px 0 14px;font-size:14px">Tu publicación aparece en Inicio para que otros clientes la pidan.</p>
+ <section class="view" id="v-pub" aria-label="Vender">
+  <h1>Vender</h1>
   <div id="pubGate"></div>
   <div id="pubForm">
+   <div class="vh" style="margin:0 0 10px"><h2 id="pfT" style="margin:0">Nueva publicación</h2><button class="btn s sm" id="pubCancel" hidden>Cancelar</button></div>
    <div class="f"><label for="pt">Título</label><input class="in" id="pt" maxlength="150" placeholder="Ej. Arepas con queso, 6 unidades"><div class="err" id="e-pt"></div></div>
    <div class="f"><label for="pd">Descripción</label><textarea class="in" id="pd" rows="3" maxlength="1000" placeholder="Cuenta qué incluye y cómo se entrega"></textarea><div class="h" id="pdc">0 / 1000</div><div class="err" id="e-pd"></div></div>
    <div class="row"><div class="f"><label for="pp">Precio (COP)</label><input class="in" id="pp" type="number" inputmode="numeric" min="1" placeholder="12000"><div class="err" id="e-pp"></div></div>
-   <div class="f"><label for="pc">Categoría</label><select class="in" id="pc"></select></div></div>
+   <div class="f"><label for="pc">Categoría</label><select class="in" id="pc"></select><div class="err" id="e-pc"></div></div></div>
    <div class="f"><label for="pi">Enlace de la foto</label><input class="in" id="pi" type="url" maxlength="500" placeholder="https://…"><div class="h">Pega la dirección web de una imagen.</div><div class="err" id="e-pi"></div></div>
    <button class="btn" id="pubBtn">Publicar producto</button>
+   <div class="vh" style="margin:22px 0 10px"><h2 style="margin:0">Mis publicaciones</h2><button class="btn s sm" id="mineRefresh">Actualizar</button></div>
+   <div id="mineList" aria-live="polite"></div>
   </div>
  </section>
 
@@ -176,55 +178,28 @@ const COP=n=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maxi
 const CATS=['Comida','Mercado','Tecnología','Hogar','Moda','Otros'];
 const METHODS={STRIPE:{n:'Tarjeta (Stripe)',l:'T',d:'Comisión 2,9 %'},PAYPAL:{n:'PayPal',l:'P',d:'Comisión 3,49 %'},CRYPTO:{n:'Criptomonedas',l:'₿',d:'Comisión 1 % · mínimo $10.000'}};
 const ROLES={CUSTOMER:'Cliente',SELLER:'Vendedor',DRIVER:'Conductor'};
-const S={token:null,user:null,cat:'',q:'',pay:'STRIPE',demo:false,items:[]};
+const S={token:null,user:null,cat:'',q:'',pay:'STRIPE',items:[],mine:[],edit:null};
 try{S.user=JSON.parse(localStorage.getItem('sa_user')||'null');S.token=localStorage.getItem('sa_token')}catch(e){}
 if(!S.token)S.user=null;
 const save=()=>{try{if(S.user&&S.token){localStorage.setItem('sa_user',JSON.stringify(S.user));localStorage.setItem('sa_token',S.token)}else{localStorage.removeItem('sa_user');localStorage.removeItem('sa_token')}}catch(e){}};
 const logout=()=>{S.user=null;S.token=null;save();showLogin()};
 
-/* ---------- API con modo demo ---------- */
-const D=[
- {id:1,title:'Bandeja paisa para dos',description:'Frijoles, arroz, chicharrón, huevo, plátano y arepa. Llega caliente.',price:48000,category:'Comida',imageUrl:'',sellerName:'Fogón de Marta'},
- {id:2,title:'Canasta de frutas de temporada',description:'Mango, mora, lulo y granadilla. Producto fresco del día.',price:26500,category:'Mercado',imageUrl:'',sellerName:'Plaza Soacha'},
- {id:3,title:'Audífonos inalámbricos',description:'Batería de 20 horas, estuche de carga y garantía de 6 meses.',price:139000,category:'Tecnología',imageUrl:'',sellerName:'TecnoBarrio'},
- {id:4,title:'Lámpara de escritorio LED',description:'Tres niveles de luz, cuerpo de aluminio y cable de 1,5 m.',price:62000,category:'Hogar',imageUrl:'',sellerName:'Casa Clara'},
- {id:5,title:'Café de origen, 500 g',description:'Tostión media, grano entero, cultivado en Cundinamarca.',price:34000,category:'Mercado',imageUrl:'',sellerName:'Finca La Aurora'}];
-const U=[],O=[];let oid=1;
-function demo(p,o={}){
- const b=o.body?JSON.parse(o.body):{},m=o.method||'GET';
- if(p.startsWith('/listings')){
-  if(m==='POST'){const l={...b,id:D.length+1,sellerName:S.user?.fullName||'Tú'};D.unshift(l);return l}
-  const u=new URLSearchParams(p.split('?')[1]),k=(u.get('keyword')||'').toLowerCase(),c=u.get('category')||'';
-  return D.filter(l=>(!c||l.category===c)&&(l.title+' '+l.description).toLowerCase().includes(k))}
- if(p.startsWith('/payments')){
-  if(b.method==='CRYPTO'&&b.amount<1e4)return{approved:false,fee:0,message:'El mínimo para criptomonedas es 10000 COP.'};
-  const r={CRYPTO:.01,PAYPAL:.0349,STRIPE:.029}[b.method];
-  return{approved:true,fee:Math.round(b.amount*r*100)/100,transactionId:'SIM-'+b.method+'-'+Math.random().toString(16).slice(2,10),message:'Pago aprobado en modo de práctica.'}}
- if(p.startsWith('/users/by-email')){const em=new URLSearchParams(p.split('?')[1]).get('email').toLowerCase(),u=U.find(x=>x.email.toLowerCase()===em);
-  if(!u)throw Object.assign(new Error('No existe una cuenta con ese correo'),{api:1,status:404});return u}
- if(p.startsWith('/deliveries')){
-  if(m==='POST'){const l=D.find(x=>x.id==b.listingId),o={id:oid++,status:'PENDING',listingId:l?l.id:null,title:l?l.title:b.title,description:l?l.description:b.description,pickupAddress:l?l.sellerName:b.pickupAddress,total:l?l.price:b.price,deliveryFee:5000,customerId:b.customerId,customerName:S.user.fullName,driverId:null,driverName:null,deliveryAddress:[S.user.addressLine,S.user.city].filter(Boolean).join(', '),createdAt:new Date().toISOString()};O.unshift(o);return o}
-  const [,,k,id]=p.split('/');
-  if(m==='PATCH'){const o=O.find(x=>x.id==k);o.status=b.status;if(b.status==='ACCEPTED'){o.driverId=b.userId;o.driverName=S.user.fullName}return o}
-  return k==='available'?O.filter(x=>x.status==='PENDING'):k==='customer'?O.filter(x=>x.customerId==id):O.filter(x=>x.driverId==id)}
- if(p.endsWith('shipping-address')){Object.assign(U.find(x=>x.id==p.split('/')[2])||{},b);return{...S.user,...b}}
- if(p==='/users'){const u={id:U.length+1,...b};U.push(u);return u}
-}
+/* ---------- API (siempre datos reales del backend) ---------- */
 async function api(p,o={}){
  try{
   const r=await fetch('/api'+p,{...o,headers:{'Content-Type':'application/json',...(S.token?{'Authorization':'Bearer '+S.token}:{})}});
   const d=await r.json().catch(()=>({}));
   if(r.status===401&&S.token&&!p.startsWith('/auth/')){logout();toast('Tu sesión venció. Inicia sesión de nuevo.')}
-  if(!r.ok)throw Object.assign(new Error(d.error||d.detail||d.message||'No pudimos completar la acción. Revisa los datos e inténtalo de nuevo.'),{api:1,status:r.status});
-  S.demo=false;return d;
- }catch(e){if(e.api)throw e;if(p.startsWith('/auth/'))throw new Error('No hay conexión con el servidor. Inténtalo de nuevo.');S.demo=true;return demo(p,o)}
+  if(!r.ok)throw Object.assign(new Error(d.error||d.detail||d.message||'No pudimos completar la acción. Revisa los datos e inténtalo de nuevo.'),{api:1,status:r.status,fields:d.fields||{}});
+  return d;
+ }catch(e){if(e.api)throw e;throw new Error('No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.')}
 }
 
 /* ---------- Utilidades de UI ---------- */
 let tt;function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('on'),2800)}
 const ic={home:'<path d="M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',pub:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',pay:'<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 15h2"/>',me:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',ord:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',av:'<path d="M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',dl:'<path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>'};
-const LBL={home:'Inicio',ord:'Pedidos',pub:'Publicar',pay:'Billetera',me:'Perfil',av:'Disponibles',dl:'Mis entregas'},NAV={CUSTOMER:['home','ord','pub','pay','me'],DRIVER:['av','dl','me']};
-function buildNav(){$('#nav').innerHTML=NAV[S.user.mode||'CUSTOMER'].map(k=>`<button data-go="${k}"><svg class="ico" viewBox="0 0 24 24">${ic[k]}</svg>${LBL[k]}</button>`).join('')}
+const LBL={home:'Inicio',ord:'Pedidos',pub:'Vender',pay:'Billetera',me:'Perfil',av:'Disponibles',dl:'Mis entregas'},NAV={CUSTOMER:['home','ord','pub','pay','me'],DRIVER:['av','dl','me']};
+function buildNav(){$('#nav').innerHTML=NAV[S.user.mode||'CUSTOMER'].filter(k=>k!=='pub'||has('SELLER')).map(k=>`<button data-go="${k}"><svg class="ico" viewBox="0 0 24 24">${ic[k]}</svg>${LBL[k]}</button>`).join('')}
 function go(k){
  $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+k));
  $$('#nav button').forEach(b=>b.dataset.go===k?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
@@ -247,7 +222,6 @@ async function load(){
  head();const g=$('#grid');g.innerHTML='<div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div>';
  try{S.items=await api(`/listings?keyword=${encodeURIComponent(S.q)}&category=${encodeURIComponent(S.cat)}`)}
  catch(e){g.innerHTML=`<div class="empty">${esc(e.message)}<br><br><button class="btn s sm" id="retry">Reintentar</button></div>`;$('#retry').onclick=load;return}
- $('#demo').hidden=!S.demo;
  g.innerHTML=S.items.length?S.items.map(l=>`<button class="card" data-id="${l.id}">${img(l)}<div class="cb"><b>${COP(l.price)}</b>${esc(l.title)}<span>${esc(l.sellerName)}</span></div></button>`).join(''):
  `<div class="empty">No encontramos productos con esos filtros.<br><br><button class="btn s sm" id="clr">Limpiar filtros</button></div>`;
  const c=$('#clr');if(c)c.onclick=()=>{S.q='';S.cat='';$('#q').value='';chips();load()};
@@ -268,20 +242,45 @@ addEventListener('keydown',e=>e.key==='Escape'&&closeS());
 /* ---------- Publicar ---------- */
 $('#pc').innerHTML=CATS.map(c=>`<option>${c}</option>`).join('');
 $('#pd').oninput=e=>$('#pdc').textContent=e.target.value.length+' / 1000';
+const STL={PUBLISHED:'Publicada',SOLD:'Vendida',SUSPENDED:'Suspendida'};
+const FIELD={title:'pt',description:'pd',price:'pp',category:'pc',imageUrl:'pi'};
 function gate(){
- const ok=has('SELLER')||has('CUSTOMER');$('#pubForm').hidden=!ok;
- $('#pubGate').innerHTML=ok?'':`<div class="note">Inicia sesión como cliente para publicar productos.<br><br><button class="btn sm" id="gp">Ir a mi perfil</button></div>`;
- const g=$('#gp');if(g)g.onclick=()=>go('me');
+ const ok=has('SELLER');$('#pubForm').hidden=!ok;
+ $('#pubGate').innerHTML=ok?'':`<div class="note">Tu cuenta no es de vendedor. Para vender, crea una cuenta marcando «También quiero vender».</div>`;
+ if(ok){resetPub();mine()}
 }
+function resetPub(){S.edit=null;['pt','pd','pp','pi'].forEach(k=>{$('#'+k).value='';fail(k,'')});fail('pc','');$('#pc').value=CATS[0];$('#pdc').textContent='0 / 1000';
+ $('#pfT').textContent='Nueva publicación';$('#pubBtn').textContent='Publicar producto';$('#pubCancel').hidden=true}
+async function mine(){
+ const el=$('#mineList');el.innerHTML='<div class="sk" style="height:84px;margin-bottom:10px"></div>'.repeat(2);
+ try{S.mine=await api('/listings/mine')}catch(e){el.innerHTML=`<div class="empty">${esc(e.message)}<br><br><button class="btn s sm" id="mineRetry">Reintentar</button></div>`;$('#mineRetry').onclick=mine;return}
+ el.innerHTML=S.mine.length?S.mine.map(l=>`<div class="mi">${img(l)}<div class="t"><b>${esc(l.title)}</b><span>${COP(l.price)} · ${esc(l.category)}</span><br><span class="pill" style="margin:4px 0 0">${STL[l.status]||l.status}</span></div>
+  <div class="a">${l.status==='SOLD'?'':`<button class="btn s" data-edit="${l.id}" aria-label="Editar ${esc(l.title)}">Editar</button>`}<button class="btn d" data-del="${l.id}" aria-label="Eliminar ${esc(l.title)}">Eliminar</button></div></div>`).join('')
+  :'<div class="empty">Aún no tienes publicaciones. Crea la primera con el formulario de arriba.</div>';
+}
+$('#mineRefresh').onclick=mine;
+$('#pubCancel').onclick=resetPub;
+$('#mineList').onclick=async e=>{
+ const ed=e.target.closest('[data-edit]'),dl=e.target.closest('[data-del]');
+ if(ed){const l=S.mine.find(x=>x.id==ed.dataset.edit);S.edit=l.id;
+  $('#pt').value=l.title;$('#pd').value=l.description;$('#pp').value=+l.price;$('#pi').value=l.imageUrl;
+  $('#pc').value=CATS.includes(l.category)?l.category:'Otros';$('#pdc').textContent=l.description.length+' / 1000';
+  $('#pfT').textContent='Editar publicación';$('#pubBtn').textContent='Guardar cambios';$('#pubCancel').hidden=false;$('main').scrollTop=0;$('#pt').focus()}
+ if(dl){const l=S.mine.find(x=>x.id==dl.dataset.del);if(!confirm(`¿Eliminar «${l.title}»? Ya no aparecerá en Inicio.`))return;
+  dl.disabled=true;try{await api('/listings/'+l.id,{method:'DELETE'});if(S.edit===l.id)resetPub();toast('Publicación eliminada');mine()}catch(err){toast(err.message);dl.disabled=false}}
+};
 function fail(id,m){const i=$('#'+id),e=$('#e-'+id);if(e)e.textContent=m||'';i.setAttribute('aria-invalid',!!m)}
 $('#pubBtn').onclick=async()=>{
  const v={t:$('#pt').value.trim(),d:$('#pd').value.trim(),p:+$('#pp').value,i:$('#pi').value.trim()};
- const bad={pt:!v.t&&'Escribe un título.',pd:!v.d&&'Escribe una descripción.',pp:!(v.p>0)&&'Ingresa un precio mayor que 0.',pi:!/^https?:\/\//.test(v.i)&&'Pega un enlace que empiece por https://'};
- Object.entries(bad).forEach(([k,m])=>fail(k,m));if(Object.values(bad).some(Boolean))return;
- const b=$('#pubBtn');b.disabled=true;b.textContent='Publicando…';
- try{await api('/listings',{method:'POST',body:JSON.stringify({title:v.t,description:v.d,price:v.p,category:$('#pc').value,imageUrl:v.i})});
-  ['pt','pd','pp','pi'].forEach(k=>$('#'+k).value='');toast('Producto publicado');S.q='';S.cat='';$('#q').value='';chips();go('home')}
- catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Publicar producto'}
+ const bad={pt:!v.t&&'Escribe un título.',pd:!v.d&&'Escribe una descripción.',pp:!(v.p>0)&&'Ingresa un precio mayor que 0.',
+  pi:!v.i?'Agrega el enlace de una foto.':(!/^https?:\/\/\S+$/.test(v.i)&&'Pega un enlace que empiece por https://')};
+ fail('pc','');Object.entries(bad).forEach(([k,m])=>fail(k,m));if(Object.values(bad).some(Boolean))return;
+ const b=$('#pubBtn'),txt=b.textContent,edit=S.edit;b.disabled=true;b.textContent=edit?'Guardando…':'Publicando…';
+ const body=JSON.stringify({title:v.t,description:v.d,price:v.p,category:$('#pc').value,imageUrl:v.i});
+ try{await api(edit?'/listings/'+edit:'/listings',{method:edit?'PUT':'POST',body});
+  resetPub();toast(edit?'Cambios guardados':'Producto publicado');mine()}
+ catch(e){const f=Object.entries(e.fields||{});f.forEach(([k,m])=>FIELD[k]&&fail(FIELD[k],m));if(!f.length)toast(e.message)}
+ finally{b.disabled=false;if(b.textContent.endsWith('…'))b.textContent=txt}
 };
 
 /* ---------- Billetera ---------- */
