@@ -8,7 +8,7 @@ import com.superapp.api.identity.domain.User;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    boolean existsByEmail(String email);
+    boolean existsByEmailIgnoreCase(String email);
 
     Optional<User> findByEmailIgnoreCase(String email);
 }
