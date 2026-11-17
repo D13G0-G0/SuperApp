@@ -132,6 +132,14 @@ nav button[aria-current=page]{color:var(--p)}
   <div id="res" aria-live="polite"></div>
   <h2>Movimientos</h2>
   <div id="movList" aria-live="polite"></div>
+  <button class="btn s" data-open="his" style="margin-top:10px">Ver todo mi historial</button>
+ </section>
+
+ <section class="view" id="v-his" aria-label="Historial">
+  <div class="vh"><h1>Historial</h1><button class="btn s sm" data-open="me">Volver</button></div>
+  <div class="chips" id="htabs" role="group" aria-label="Filtrar por tipo" style="padding-top:0;margin-bottom:10px"></div>
+  <div class="row"><div class="f"><label for="hFrom">Desde</label><input class="in" id="hFrom" type="date"></div><div class="f"><label for="hTo">Hasta</label><input class="in" id="hTo" type="date"></div></div>
+  <div id="hisList" aria-live="polite"></div>
  </section>
 
  <section class="view" id="v-me" aria-label="Perfil">
@@ -325,7 +333,7 @@ $('#payBtn').onclick=async()=>{
 function profile(){
  head();const u=S.user,m=$('#meBody');
  if(!u)return showLogin();
- m.innerHTML=`<div class="note"><b style="font-size:17px">${esc(u.fullName)}</b><div class="h" style="margin:0 0 8px">${esc(u.email)}</div>${(u.roles||[]).map(r=>`<span class="pill">${ROLES[r]||r}</span>`).join('')}<div class="h">Sesión como ${ROLES[u.mode]||'Cliente'}</div></div>
+ m.innerHTML=`<div class="note"><b style="font-size:17px">${esc(u.fullName)}</b><div class="h" style="margin:0 0 8px">${esc(u.email)}</div>${(u.roles||[]).map(r=>`<span class="pill">${ROLES[r]||r}</span>`).join('')}<div class="h">Sesión como ${ROLES[u.mode]||'Cliente'}</div></div><button class="btn s" data-open="his" style="margin-bottom:6px">Ver mi historial</button>
  ${u.mode==='DRIVER'?'':`<h2>Dirección de entrega</h2>
  ${[['addressLine','Dirección'],['city','Ciudad'],['state','Departamento'],['postalCode','Código postal'],['country','País']].map(([k,n])=>`<div class="f"><label for="a-${k}">${n}</label><input class="in" id="a-${k}" value="${esc(u[k]||(k==='country'?'Colombia':''))}" maxlength="${k==='addressLine'?200:100}"></div>`).join('')}<button class="btn" id="sv">Guardar dirección</button>`}<button class="btn s" id="out" style="margin-top:10px">Cerrar sesión</button>`;
  if($('#sv'))$('#sv').onclick=async()=>{const b={};['addressLine','city','state','postalCode','country'].forEach(k=>b[k]=$('#a-'+k).value.trim());
@@ -389,7 +397,24 @@ $('#ordList').addEventListener('click',async e=>{
  try{await api(`/${who==='buyer'?'orders':'sales'}/${b.dataset.oid}/status`,{method:'PATCH',body:JSON.stringify({status:s})});toast(OMSG[s]);orders(true)}
  catch(err){toast(err.message);b.disabled=false}
 });
-const LOAD={home:load,pay:wallet,ord:orders,
+/* ---------- Historial (FR-08) ---------- */
+const HT=[['','Todo'],['PURCHASE','Compras'],['SALE','Ventas'],['WALLET','Billetera']],HN={PURCHASE:'Compra',SALE:'Venta',WALLET:'Billetera',DELIVERY:'Domicilio'};
+function htabs(){$('#htabs').innerHTML=HT.filter(([k])=>k!=='SALE'||has('SELLER')).map(([k,n])=>`<button class="chip" aria-pressed="${k===(S.htype||'')}" data-ht="${k}">${n}</button>`).join('')}
+$('#htabs').onclick=e=>{const b=e.target.closest('[data-ht]');if(b){S.htype=b.dataset.ht;hist()}};
+$('#hFrom').onchange=$('#hTo').onchange=()=>hist();
+function hisItem(h){
+ const a=h.amount==null?'':`<div style="font-weight:800;white-space:nowrap;color:var(${+h.amount>0?'--ok':'--er'})">${+h.amount>0?'+':'−'}${COP(Math.abs(h.amount))}</div>`;
+ return `<div class="mi"><div class="t"><b>${esc(h.title)}</b><span>${HN[h.type]||h.type} · ${when(h.createdAt)}${h.detail?'<br>'+esc(h.detail):''}</span></div>${a}</div>`;
+}
+async function hist(quiet){
+ htabs();const q=new URLSearchParams(),f=$('#hFrom').value,t=$('#hTo').value,el=$('#hisList');
+ if(S.htype)q.set('type',S.htype);if(f)q.set('from',f);if(t)q.set('to',t);
+ if(!quiet)el.innerHTML='<div class="sk" style="height:64px;margin-bottom:10px"></div>'.repeat(3);
+ try{const l=await api('/history'+(q.size?'?'+q:''));
+  el.innerHTML=l.length?l.map(hisItem).join(''):`<div class="empty">${S.htype||f||t?'No hay nada con esos filtros.':'Aquí verás tus compras, ventas y recargas.'}</div>`}
+ catch(e){el.innerHTML=`<div class="empty">${esc(e.message)}</div>`}
+}
+const LOAD={home:load,pay:wallet,ord:orders,his:hist,
  av:q=>fill('#avList','/deliveries/available','No hay pedidos por ahora. Esta lista se actualiza sola.',o=>oCard(o,'av',ob(o.id,'ACCEPTED','Aceptar entrega')),q),
  dl:async q=>{
   const d=await fill('#dlList','/deliveries/assigned','Todavía no tienes entregas. Acepta una en Disponibles.',o=>oCard(o,'dl',o.status==='ACCEPTED'?ob(o.id,'PICKED_UP','Marcar como recogido'):o.status==='PICKED_UP'?ob(o.id,'DELIVERED','Marcar como entregado'):''),q);

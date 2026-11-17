@@ -2,11 +2,14 @@ package com.superapp.api.wallet.service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.superapp.api.history.api.HistoryType;
+import com.superapp.api.history.api.IHistory;
 import com.superapp.api.wallet.api.IWallet;
 import com.superapp.api.wallet.domain.MovementType;
 import com.superapp.api.wallet.domain.WalletAccount;
@@ -39,9 +42,13 @@ public class WalletService implements IWallet {
             PaymentMethod.PAYPAL, "PayPal",
             PaymentMethod.CRYPTO, "criptomonedas");
 
+    /** Formato de pesos colombianos: 735.000 */
+    private static final Locale PESOS = Locale.forLanguageTag("es-CO");
+
     private final WalletAccountRepository accounts;
     private final WalletMovementRepository movements;
     private final PaymentStrategyFactory paymentStrategies;
+    private final IHistory history;
 
     /** Saldo y movimientos del usuario, del más reciente al más antiguo. */
     @Transactional
@@ -68,6 +75,9 @@ public class WalletService implements IWallet {
         WalletAccount account = lockedAccount(userId);
         WalletMovement movement = movements.save(account.apply(MovementType.TOP_UP, request.amount(),
                 "Recarga con " + METHOD_NAMES.get(request.method()), payment.transactionId()));
+        history.record(userId, HistoryType.WALLET, movement.getDescription(),
+                "Saldo después de la recarga: $" + String.format(PESOS, "%,.0f", account.getBalance()), movement.getAmount(),
+                movement.getReference());
         return new TopUpResponse(MovementResponse.from(movement), account.getBalance(),
                 payment.fee(), payment.message());
     }
