@@ -23,6 +23,8 @@ services:
       db:
         condition: service_healthy
     environment:
+      # Hora de Colombia: las fechas (pedidos, historial, billetera) se guardan y se muestran en esta zona.
+      TZ: America/Bogota
       DB_URL: jdbc:postgresql://db:5432/superapp
       DB_USER: superapp
       DB_PASSWORD: superapp
