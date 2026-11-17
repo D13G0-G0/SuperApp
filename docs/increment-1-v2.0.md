@@ -44,11 +44,11 @@ Una aplicación web para celular servida por un backend Spring Boot, que se leva
 | **FR-01** Registro e inicio de sesión | Registro con nombre, correo y contraseña (mín. 8). Inicio de sesión que devuelve un JWT de 30 min. Cerrar sesión borra el token del dispositivo. | `identity` · pantalla de inicio de sesión |
 | **FR-02** Roles | Cliente, Vendedor, Conductor y Administrador. Una cuenta puede ser Cliente y Vendedor a la vez. Nadie puede registrarse como Administrador. | `shared/security/SecurityConfig` |
 | **FR-03** Publicaciones | Publicar, editar y eliminar (solo el dueño). Solo se publica con título, descripción, precio > 0, categoría y foto, y hay un mensaje por cada campo que falte. Si la publicación ya está en un pedido, se borra de forma lógica (DELETED). | `catalog` · "Vender" y "Mis publicaciones" |
-| **FR-04** Búsqueda y filtros | Búsqueda por palabra clave, categoría y rango de precios (`minPrice`, `maxPrice`). La pantalla muestra palabra clave y categoría. | `catalog` · Inicio |
+| **FR-04** Búsqueda y filtros | Búsqueda por palabra clave, categoría y rango de precios (`minPrice`, `maxPrice`), con casillas de precio mínimo y máximo en la pantalla. Si el mínimo es mayor que el máximo, se avisa sin llamar al servidor. | `catalog` · Inicio |
 | **FR-05** Carrito y pago | Carrito, y pago de todo el carrito con la billetera en **una transacción**. Crea un pedido por vendedor. Si algo ya se vendió, no cobra nada, lo quita del carrito y lo dice. Si no alcanza el saldo, no cambia nada y ofrece recargar. | `orders` · Pedidos → Carrito |
 | **FR-06** Estados (pedidos) | Máquina de estados `PAID → SHIPPED → DELIVERED` y `PAID → CANCELLED`. Cada parte solo hace lo suyo: el vendedor envía, el comprador confirma la entrega y cualquiera cancela antes del envío. Una transición inválida devuelve 400 con la lista de estados permitidos. | `orders/domain/OrderStateMachine` · Pedidos → Compras/Ventas |
 | **FR-07** Billetera | Recarga simulada con PayPal, Stripe o Cripto. Movimientos `TOP_UP`, `PAYMENT`, `INCOME` y `REFUND` que no se pueden editar ni borrar. El saldo nunca baja de 0. | `wallet` · Billetera |
-| **FR-08** Historial unificado | Cada recarga, compra, venta y cambio de estado escribe una entrada para cada persona involucrada. Se lista del más reciente al más antiguo, con filtro por tipo y fechas. | `history` · Perfil → Ver mi historial |
+| **FR-08** Historial unificado | Cada recarga, compra, venta, cambio de estado de un pedido y cambio de estado de un domicilio escribe una entrada para cada persona involucrada. Se lista del más reciente al más antiguo, con filtro por tipo y fechas. | `history` · Perfil → Ver mi historial |
 
 ### Historias de usuario del Sprint 1
 
@@ -94,6 +94,7 @@ flowchart LR
     orders -->|IWallet| wallet
     orders -->|IHistory| history
     wallet -->|IHistory| history
+    logistics -->|IHistory| history
     catalog -.->|ListingReferences<br/>lo implementa orders| orders
 ```
 
@@ -103,7 +104,7 @@ Un módulo solo usa a otro a través de una **interfaz pública** en su paquete 
 |---|---|---|---|
 | `IWallet` | wallet | orders | Cobrar (`debit`) y abonar (`credit`: INCOME o REFUND) |
 | `ICatalog` | catalog | orders | Bloquear publicaciones para comprar, marcarlas vendidas y liberarlas |
-| `IHistory` | history | wallet, orders | Anotar en el historial dentro de la misma transacción |
+| `IHistory` | history | wallet, orders, logistics | Anotar en el historial dentro de la misma transacción |
 | `ListingReferences` | catalog | (la implementa orders) | Saber si una publicación está en un pedido antes de borrarla, sin que catalog dependa de orders |
 | `CurrentUser` | shared | todos los controladores | Saber quién hace la petición (lee el JWT) |
 
@@ -170,13 +171,13 @@ sus movimientos, y la prueba de concurrencia lo comprueba en todas las cuentas.
 |---|---|---|
 | **NFR-02** Consistencia | 200 pagos concurrentes de una misma publicación: exactamente 1 con éxito, 0 registros parciales, saldo = suma de movimientos en el 100 % de las cuentas | `ConcurrentCheckoutTests` lanza **200 hilos** a la vez contra **PostgreSQL 16 real** (Testcontainers). Comprueba 1 pago exitoso, 199 rechazos con "ya no está disponible", 1 solo pedido, publicación SOLD, un solo cobro, una compra y una venta en el historial, y saldo = suma de movimientos en todas las cuentas. **Si se quita el bloqueo de fila, la misma publicación se vende 10 veces y la prueba falla**, así que de verdad mide lo que dice. |
 | **NFR-04** Seguridad | BCrypt costo ≥ 10, tokens ≤ 30 min, 401/403 en el 100 % de los endpoints protegidos, TLS ≥ 1.2, 0 hallazgos altos en OWASP ZAP | BCrypt costo 10. JWT HS256 que vence a los 30 min, con el secreto en la variable `JWT_SECRET`. Las pruebas comprueban 401 sin token y 403 con rol equivocado (`AuthSecurityTests`, `WalletApiTests`, `CheckoutApiTests`, `HistoryApiTests`). Quien no es parte de un pedido recibe 404, para no confirmar que existe. **Pendiente para el Sprint 2:** TLS (con el despliegue detrás de nginx) y el escaneo de OWASP ZAP. |
-| **NFR-05** Mantenibilidad | ≥ 70 % de cobertura de líneas en la lógica de dominio; 0 violaciones de dependencias entre módulos en CI | **JaCoCo** en `./mvnw verify`, que falla si la cobertura total baja del 70 %. Hoy: **95,3 %** en las clases de dominio y **76,7 %** en todo el proyecto. Los módulos se hablan solo por interfaces (ver §2). **Pendiente:** una prueba automática de arquitectura (ArchUnit) que haga cumplir esa regla en CI. |
+| **NFR-05** Mantenibilidad | ≥ 70 % de cobertura de líneas en la lógica de dominio; 0 violaciones de dependencias entre módulos en CI | **JaCoCo** en `./mvnw verify`, que falla si la cobertura total baja del 70 %. Hoy: **96,6 %** en las clases de dominio y **88,9 %** en todo el proyecto. Los módulos se hablan solo por interfaces (ver §2). **Pendiente:** una prueba automática de arquitectura (ArchUnit) que haga cumplir esa regla en CI. |
 | **NFR-06** Usabilidad | Usable desde 360 px; prueba con ≥ 5 usuarios y SUS ≥ 70 | Todas las pantallas se probaron a **360 px** de ancho, sin scroll horizontal y con textos y botones grandes. Los errores dicen qué pasó y qué hacer ("Te faltan $X: recarga abajo"). **Pendiente:** la prueba con 5 usuarios y el cuestionario SUS. |
 | **NFR-08** Portabilidad | `docker compose up` desde una copia limpia | `docker compose up --build` levanta PostgreSQL (con healthcheck) y la app. Flyway crea todo y carga los datos de prueba. GitHub Actions lo comprueba en cada pull request. |
 
 ### Pruebas automáticas
 
-`./mvnw verify` corre **63 pruebas** (también en GitHub Actions en cada pull request):
+`./mvnw verify` corre **66 pruebas** (también en GitHub Actions en cada pull request):
 
 | Clase | Pruebas | Qué cubre |
 |---|---|---|
@@ -188,6 +189,7 @@ sus movimientos, y la prueba de concurrencia lo comprueba en todas las cuentas.
 | `CheckoutApiTests` | 12 | Carrito, pago, un pedido por vendedor, ya vendido, saldo insuficiente (rollback real), entrega y cancelación con su efecto en el dinero, 403 y 404 |
 | `ConcurrentCheckoutTests` | 1 | 200 pagos simultáneos en PostgreSQL real |
 | `HistoryApiTests` | 8 | Qué se anota, filtros, permisos, y que no se puede escribir fuera de una transacción |
+| `DeliveryHistoryTests` | 3 | Los domicilios en el historial del cliente y del conductor; un cambio rechazado no deja registro |
 | `SuperappApiApplicationTests` | 3 | Arranque, migraciones y datos de prueba |
 
 ---
@@ -199,11 +201,11 @@ sus movimientos, y la prueba de concurrencia lo comprueba en todas las cuentas.
 | FR-01 | Registro e inicio de sesión | identity: `AuthController`, `AuthService`, JWT | `AuthSecurityTests` | Implemented |
 | FR-02 | Permisos por rol | shared: `SecurityConfig`, `CurrentUser` | `AuthSecurityTests` y pruebas 401/403 de cada módulo | Implemented |
 | FR-03 | Gestión de publicaciones | catalog: `ListingController`, `ListingService` | `ListingServiceTest` | Implemented |
-| FR-04 | Búsqueda y filtros | catalog: `ListingService.search` | `ListingServiceTest` | Implemented (el filtro de precio está en la API; en pantalla, Sprint 2) |
+| FR-04 | Búsqueda y filtros | catalog: `ListingService.search`; Web Client (filtros) | `ListingServiceTest` | Implemented |
 | FR-05 | Carrito y pago | orders: `CartService`, `CheckoutService`; catalog: `ICatalog`; wallet: `IWallet` | `CheckoutApiTests`, `ConcurrentCheckoutTests` | Implemented |
 | FR-06 | Estados de pedidos, envíos y viajes | orders: `OrderStateMachine`, `OrderService` | `OrderStateMachineTest`, `CheckoutApiTests` | Implemented para pedidos; envíos y viajes en el Sprint 2 |
 | FR-07 | Movimientos inmutables de la billetera | wallet: `WalletAccount`, `WalletMovement`, `WalletService` | `WalletAccountTest`, `WalletApiTests` | Implemented |
-| FR-08 | Historial unificado | history: `IHistory`, `HistoryService`, `HistoryController` | `HistoryApiTests` | Implemented |
+| FR-08 | Historial unificado | history: `IHistory`, `HistoryService`, `HistoryController`; lo usan wallet, orders y logistics | `HistoryApiTests`, `DeliveryHistoryTests` | Implemented |
 | FR-09 | Panel financiero mensual | — | — | Deferred (Sprint 2) |
 | FR-10 | Envíos y viajes con asignación simulada | logistics (base: entregas con conductor) | — | Deferred (Sprint 2) |
 | FR-11 | Panel de administración | — | — | Deferred (Sprint 3) |
@@ -246,7 +248,7 @@ Abrir **http://localhost:8080**. Para apagarlo: `Ctrl + C`. Para borrar también
 2. **Inicio** → abrir un producto → **Comprar ahora** → **Pagar con billetera**.
 3. En otra ventana, entrar con `vendedor@superapp.test` → **Pedidos → Ventas** → **Marcar como enviado**.
 4. Con el cliente: **Pedidos → Compras** → **Confirmar que lo recibí**. El vendedor recibe el dinero en ese momento.
-5. **Perfil → Ver mi historial**: filtrar por tipo y fecha.
+5. **Perfil → Ver mi historial**: filtrar por tipo y fecha. El conductor tiene su historial en **Mis entregas**.
 
 ### Pruebas
 
@@ -266,9 +268,9 @@ Docker, esa prueba se salta. El informe de cobertura queda en `backend/target/si
 |---|---|---|
 | 1 | **Envíos ligados a un pedido y viajes**, con asignación simulada de conductor y su propia máquina de estados (`REQUESTED → ASSIGNED → IN_TRANSIT → DELIVERED`). Partir de la base de entregas que ya existe en `logistics`. | FR-06, FR-10, US-03 |
 | 2 | **Panel financiero mensual**: ingresos, gastos y saldo calculados desde los movimientos de la billetera | FR-09, US-04 |
-| 3 | **Más pruebas**: prueba de arquitectura con ArchUnit en CI, pruebas de `logistics` (hoy casi sin cobertura), prueba de carga para NFR-01 y escaneo de OWASP ZAP | NFR-01, NFR-04, NFR-05 |
+| 3 | **Más pruebas**: prueba de arquitectura con ArchUnit en CI, más pruebas de `logistics`, prueba de carga para NFR-01 y escaneo de OWASP ZAP | NFR-01, NFR-04, NFR-05 |
 | 4 | **Despliegue con nginx y TLS**, y caché de búsquedas con Redis | NFR-01, NFR-04 |
-| 5 | **Usabilidad**: prueba con 5 usuarios y SUS; filtro por precio en la pantalla; navegadores restantes | NFR-06, NFR-07, FR-04 |
+| 5 | **Usabilidad**: prueba con 5 usuarios y SUS; navegadores restantes | NFR-06, NFR-07 |
 
 Para el Sprint 3: panel de administración (FR-11, US-05), notificaciones en la aplicación (FR-12) y copias de
 seguridad automáticas con prueba de restauración (NFR-03).
