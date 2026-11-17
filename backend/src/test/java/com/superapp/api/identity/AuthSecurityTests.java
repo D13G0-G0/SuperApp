@@ -114,7 +114,7 @@ class AuthSecurityTests {
                         .content("{\"title\":\"Silla\",\"description\":\"d\",\"price\":0,\"category\":\"Hogar\",\"imageUrl\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fields.price").value("El precio debe ser mayor que 0"))
-                .andExpect(jsonPath("$.fields.imageUrl").exists());
+                .andExpect(jsonPath("$.fields.imageUrl").value("Debes incluir una foto"));
         mvc.perform(delete("/api/listings/" + id).header("Authorization", "Bearer " + customer))
                 .andExpect(status().isForbidden());
         mvc.perform(delete("/api/listings/" + id).header("Authorization", "Bearer " + seller))

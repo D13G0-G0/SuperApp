@@ -30,7 +30,7 @@ public record ListingRequest(
 
         @NotBlank(message = "Debes incluir una foto")
         @Size(max = 500, message = "El enlace de la foto es demasiado largo")
-        @Pattern(regexp = "^https?://\\S+$", message = "La foto debe ser un enlace que empiece por http:// o https://")
+        @Pattern(regexp = "^$|^https?://\\S+$", message = "La foto debe ser un enlace que empiece por http:// o https://")
         String imageUrl
 ) {
 }
