@@ -153,16 +153,18 @@ nav button[aria-current=page]{color:var(--p)}
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Detalle del producto"><div class="sp" id="sp"></div></div>
 <div id="login" role="region" aria-label="Iniciar sesión">
  <div class="logo"><svg class="ico" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg></div>
- <h1 style="font-size:28px;margin:0 0 4px">Inicia sesión</h1>
+ <h1 style="font-size:28px;margin:0 0 4px" id="ltitle">Inicia sesión</h1>
  <p class="h" style="margin:0 0 20px;font-size:14px">Elige cómo vas a usar SuperApp.</p>
  <div class="seg" id="lrole" role="radiogroup" aria-label="Tipo de cuenta">
   <button role="radio" aria-checked="true" data-r="CUSTOMER"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg><b>Cliente</b><span>Pide y paga</span></button>
   <button role="radio" aria-checked="false" data-r="DRIVER"><svg class="ico" viewBox="0 0 24 24"><path d="M5 17H4a1 1 0 0 1-1-1v-3l2-5.2A2 2 0 0 1 6.9 6.5h10.2a2 2 0 0 1 1.9 1.3L21 13v3a1 1 0 0 1-1 1h-1M3 13h18M9.5 17h5"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/></svg><b>Conductor</b><span>Entrega pedidos</span></button>
  </div>
- <div class="f"><label for="ln">Nombre completo</label><input class="in" id="ln" maxlength="100" autocomplete="name"><div class="h">Solo si es tu primera vez.</div><div class="err" id="e-ln"></div></div>
+ <div class="f" id="fln" hidden><label for="ln">Nombre completo</label><input class="in" id="ln" maxlength="100" autocomplete="name"><div class="err" id="e-ln"></div></div>
  <div class="f"><label for="le">Correo</label><input class="in" id="le" type="email" autocomplete="email" placeholder="tu@correo.com"><div class="err" id="e-le"></div></div>
- <button class="btn" id="lg">Continuar</button>
- <p class="h" style="margin-top:10px;text-align:center">Si ya tienes cuenta, entras solo con tu correo.</p>
+ <div class="f"><label for="lp">Contraseña</label><input class="in" id="lp" type="password" autocomplete="current-password" maxlength="72"><div class="h" id="lph" hidden>Mínimo 8 caracteres.</div><div class="err" id="e-lp"></div></div>
+ <label class="h" id="lsell" hidden style="gap:8px;align-items:center;margin:0 0 12px"><input type="checkbox" id="lsl"> También quiero vender</label>
+ <button class="btn" id="lg">Entrar</button>
+ <p class="h" style="margin-top:10px;text-align:center"><span id="lq">¿No tienes cuenta?</span> <button class="chip" id="lsw" type="button">Crear cuenta</button></p>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 </div>
@@ -174,9 +176,11 @@ const COP=n=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maxi
 const CATS=['Comida','Mercado','Tecnología','Hogar','Moda','Otros'];
 const METHODS={STRIPE:{n:'Tarjeta (Stripe)',l:'T',d:'Comisión 2,9 %'},PAYPAL:{n:'PayPal',l:'P',d:'Comisión 3,49 %'},CRYPTO:{n:'Criptomonedas',l:'₿',d:'Comisión 1 % · mínimo $10.000'}};
 const ROLES={CUSTOMER:'Cliente',SELLER:'Vendedor',DRIVER:'Conductor'};
-const S={user:null,cat:'',q:'',pay:'STRIPE',demo:false,items:[]};
-try{S.user=JSON.parse(localStorage.getItem('sa_user')||'null')}catch(e){}
-const save=()=>{try{S.user?localStorage.setItem('sa_user',JSON.stringify(S.user)):localStorage.removeItem('sa_user')}catch(e){}};
+const S={token:null,user:null,cat:'',q:'',pay:'STRIPE',demo:false,items:[]};
+try{S.user=JSON.parse(localStorage.getItem('sa_user')||'null');S.token=localStorage.getItem('sa_token')}catch(e){}
+if(!S.token)S.user=null;
+const save=()=>{try{if(S.user&&S.token){localStorage.setItem('sa_user',JSON.stringify(S.user));localStorage.setItem('sa_token',S.token)}else{localStorage.removeItem('sa_user');localStorage.removeItem('sa_token')}}catch(e){}};
+const logout=()=>{S.user=null;S.token=null;save();showLogin()};
 
 /* ---------- API con modo demo ---------- */
 const D=[
@@ -208,11 +212,12 @@ function demo(p,o={}){
 }
 async function api(p,o={}){
  try{
-  const r=await fetch('/api'+p,{...o,headers:{'Content-Type':'application/json',...(S.user?{'X-User-Id':String(S.user.id)}:{})}});
+  const r=await fetch('/api'+p,{...o,headers:{'Content-Type':'application/json',...(S.token?{'Authorization':'Bearer '+S.token}:{})}});
   const d=await r.json().catch(()=>({}));
+  if(r.status===401&&S.token&&!p.startsWith('/auth/')){logout();toast('Tu sesión venció. Inicia sesión de nuevo.')}
   if(!r.ok)throw Object.assign(new Error(d.error||d.detail||d.message||'No pudimos completar la acción. Revisa los datos e inténtalo de nuevo.'),{api:1,status:r.status});
   S.demo=false;return d;
- }catch(e){if(e.api)throw e;S.demo=true;return demo(p,o)}
+ }catch(e){if(e.api)throw e;if(p.startsWith('/auth/'))throw new Error('No hay conexión con el servidor. Inténtalo de nuevo.');S.demo=true;return demo(p,o)}
 }
 
 /* ---------- Utilidades de UI ---------- */
@@ -299,23 +304,13 @@ $('#payBtn').onclick=async()=>{
 /* ---------- Perfil ---------- */
 function profile(){
  head();const u=S.user,m=$('#meBody');
- if(!u){m.innerHTML=`<div class="f"><label for="rn">Nombre completo</label><input class="in" id="rn" maxlength="100" autocomplete="name"><div class="err" id="e-rn"></div></div>
- <div class="f"><label for="re">Correo</label><input class="in" id="re" type="email" autocomplete="email"><div class="err" id="e-re"></div></div>
- <label>¿Cómo usarás SuperApp?</label><div id="rr" style="margin-bottom:4px">${Object.entries(ROLES).map(([k,n])=>`<button class="chip" data-r="${k}" aria-pressed="${k==='CUSTOMER'}" style="margin:0 6px 8px 0">${n}</button>`).join('')}</div><div class="err" id="e-rr"></div>
- <button class="btn" id="reg" style="margin-top:8px">Crear perfil</button>`;
-  $('#rr').onclick=e=>{const c=e.target.closest('.chip');c&&c.setAttribute('aria-pressed',c.getAttribute('aria-pressed')!=='true')};
-  $('#reg').onclick=async()=>{
-   const n=$('#rn').value.trim(),em=$('#re').value.trim(),roles=$$('#rr .chip[aria-pressed=true]').map(c=>c.dataset.r);
-   fail('rn',!n&&'Escribe tu nombre.');fail('re',!/^\S+@\S+\.\S+$/.test(em)&&'Escribe un correo válido.');$('#e-rr').textContent=roles.length?'':'Elige al menos una opción.';
-   if(!n||!/^\S+@\S+\.\S+$/.test(em)||!roles.length)return;
-   try{S.user=await api('/users',{method:'POST',body:JSON.stringify({fullName:n,email:em,roles})});save();toast('Perfil creado');profile();head()}catch(e){toast(e.message)}};
-  return}
+ if(!u)return showLogin();
  m.innerHTML=`<div class="note"><b style="font-size:17px">${esc(u.fullName)}</b><div class="h" style="margin:0 0 8px">${esc(u.email)}</div>${(u.roles||[]).map(r=>`<span class="pill">${ROLES[r]||r}</span>`).join('')}<div class="h">Sesión como ${ROLES[u.mode]||'Cliente'}</div></div>
  ${u.mode==='DRIVER'?'':`<h2>Dirección de entrega</h2>
  ${[['addressLine','Dirección'],['city','Ciudad'],['state','Departamento'],['postalCode','Código postal'],['country','País']].map(([k,n])=>`<div class="f"><label for="a-${k}">${n}</label><input class="in" id="a-${k}" value="${esc(u[k]||(k==='country'?'Colombia':''))}" maxlength="${k==='addressLine'?200:100}"></div>`).join('')}<button class="btn" id="sv">Guardar dirección</button>`}<button class="btn s" id="out" style="margin-top:10px">Cerrar sesión</button>`;
  if($('#sv'))$('#sv').onclick=async()=>{const b={};['addressLine','city','state','postalCode','country'].forEach(k=>b[k]=$('#a-'+k).value.trim());
-  try{S.user={...S.user,...await api(`/users/${u.id}/shipping-address`,{method:'PATCH',body:JSON.stringify(b)})};save();head();toast('Dirección guardada')}catch(e){toast(e.message)}};
- $('#out').onclick=()=>{if(confirm('¿Cerrar sesión en este dispositivo?')){S.user=null;save();showLogin()}};
+  try{S.user={...S.user,...await api('/users/me/shipping-address',{method:'PATCH',body:JSON.stringify(b)})};save();head();toast('Dirección guardada')}catch(e){toast(e.message)}};
+ $('#out').onclick=()=>{if(confirm('¿Cerrar sesión en este dispositivo?'))logout()};
 }
 
 /* ---------- Pedidos y entregas ---------- */
@@ -365,24 +360,30 @@ $('#nBtn').onclick=async()=>{
  catch(e){toast(e.message)}finally{b.disabled=!S.user.addressLine;b.textContent='Crear pedido'}
 };
 
-/* ---------- Login ---------- */
-let LR='CUSTOMER';
-function showLogin(){$('#login').classList.add('on');$('#ln').value='';$('#le').value='';fail('ln','');fail('le','');$('#ln').focus()}
+/* ---------- Login y registro (contraseña + JWT) ---------- */
+let LR='CUSTOMER',REG=false;
+function setReg(v){REG=v;$('#fln').hidden=!v;$('#lph').hidden=!v;$('#lsell').style.display=v&&LR==='CUSTOMER'?'flex':'none';
+ $('#ltitle').textContent=v?'Crea tu cuenta':'Inicia sesión';$('#lg').textContent=v?'Crear cuenta':'Entrar';
+ $('#lq').textContent=v?'¿Ya tienes cuenta?':'¿No tienes cuenta?';$('#lsw').textContent=v?'Iniciar sesión':'Crear cuenta';
+ $('#lp').autocomplete=v?'new-password':'current-password';['ln','le','lp'].forEach(k=>fail(k,''))}
+function showLogin(){$('#login').classList.add('on');['ln','le','lp'].forEach(k=>$('#'+k).value='');setReg(false);$('#le').focus()}
 function enter(){$('#login').classList.remove('on');buildNav();chips();go(S.user.mode==='DRIVER'?'av':'home')}
-$('#lrole').onclick=e=>{const b=e.target.closest('button');if(!b)return;LR=b.dataset.r;$$('#lrole button').forEach(x=>x.setAttribute('aria-checked',x===b))};
-$('#login').onkeydown=e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT')$('#lg').click()};
+$('#lrole').onclick=e=>{const b=e.target.closest('button');if(!b)return;LR=b.dataset.r;$$('#lrole button').forEach(x=>x.setAttribute('aria-checked',x===b));setReg(REG)};
+$('#lsw').onclick=()=>setReg(!REG);
+$('#login').onkeydown=e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'&&e.target.type!=='checkbox')$('#lg').click()};
 $('#lg').onclick=async()=>{
- const n=$('#ln').value.trim(),em=$('#le').value.trim();fail('ln','');
- if(!/^\S+@\S+\.\S+$/.test(em)){fail('le','Escribe un correo válido, por ejemplo tu@correo.com.');return}fail('le','');
- const b=$('#lg');b.disabled=true;b.textContent='Entrando…';
+ const n=$('#ln').value.trim(),em=$('#le').value.trim(),pw=$('#lp').value;
+ const bad={ln:REG&&!n&&'Escribe tu nombre.',le:!/^\S+@\S+\.\S+$/.test(em)&&'Escribe un correo válido, por ejemplo tu@correo.com.',
+  lp:!pw?'Escribe tu contraseña.':(REG&&pw.length<8&&'La contraseña debe tener mínimo 8 caracteres.')};
+ Object.entries(bad).forEach(([k,m])=>fail(k,m));if(Object.values(bad).some(Boolean))return;
+ const b=$('#lg'),txt=b.textContent;b.disabled=true;b.textContent=REG?'Creando…':'Entrando…';
  try{
-  let u=null;
-  try{u=await api('/users/by-email?email='+encodeURIComponent(em))}catch(e){if(e.status!==404)throw e}
-  if(u){if(!u.roles.includes(LR)){fail('le','Este correo está registrado como '+u.roles.map(r=>ROLES[r]||r).join(' y ')+'. Elige ese tipo de cuenta.');return}}
-  else{if(!n){fail('ln','Escribe tu nombre para crear tu cuenta.');return}
-   u=await api('/users',{method:'POST',body:JSON.stringify({fullName:n,email:em,roles:[LR]})})}
-  S.user={...u,mode:LR};save();enter();
- }catch(e){fail('le',e.message)}finally{b.disabled=false;b.textContent='Continuar'}
+  const roles=LR==='DRIVER'?['DRIVER']:($('#lsl').checked?['CUSTOMER','SELLER']:['CUSTOMER']);
+  const d=REG?await api('/auth/register',{method:'POST',body:JSON.stringify({fullName:n,email:em,password:pw,roles})})
+             :await api('/auth/login',{method:'POST',body:JSON.stringify({email:em,password:pw})});
+  if(!d.user.roles.includes(LR)){fail('le','Esta cuenta es de '+d.user.roles.map(r=>ROLES[r]||r).join(' y ')+'. Elige ese tipo de cuenta.');return}
+  S.token=d.token;S.user={...d.user,mode:LR};save();$('#lp').value='';enter();
+ }catch(e){fail(e.status===400||e.status===409?'le':'lp',e.message)}finally{b.disabled=false;b.textContent=txt}
 };
 if(S.user){S.user.mode=S.user.mode||'CUSTOMER';enter()}else showLogin();
 </script>
