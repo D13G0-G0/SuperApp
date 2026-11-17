@@ -38,12 +38,15 @@ También puedes crear una cuenta nueva desde la pantalla de inicio de sesión. N
 
 ## Correr las pruebas
 
-Con **Java 21** instalado (no hace falta Docker; las pruebas usan H2 en modo PostgreSQL con las mismas migraciones):
+Con **Java 21** instalado. Casi todas las pruebas usan H2 en modo PostgreSQL con las mismas migraciones, así que no necesitan Docker:
 
 ```bash
 cd backend
 ./mvnw verify          # Windows: mvnw.cmd verify
 ```
+
+- **Prueba de 200 pagos simultáneos** (`ConcurrentCheckoutTests`): necesita **Docker** abierto, porque levanta un PostgreSQL 16 real con Testcontainers. Si no hay Docker, esa prueba se salta y las demás corren igual.
+- **Cobertura (JaCoCo):** `verify` falla si baja del **70 %** de líneas. El informe queda en `backend/target/site/jacoco/index.html`.
 
 Cada pull request corre estas mismas pruebas en GitHub Actions (`.github/workflows/ci.yml`). Además, CI comprueba que `docker compose up` arranca y responde.
 
@@ -64,9 +67,10 @@ JWT_SECRET=un-secreto-de-desarrollo-de-al-menos-32-caracteres \
 |---|---|---|
 | `identity` | Registro, inicio de sesión (BCrypt + JWT de 30 min), roles, perfil y dirección | ✅ Increment 1 |
 | `catalog` | Publicar, buscar, editar, eliminar (lógico si tiene pedidos), "mis publicaciones" | ✅ Increment 1 |
-| `logistics` | Pedidos de entrega con conductor (pendiente → aceptado → recogido → entregado) | ✅ base |
-| `wallet` | Pagos simulados (patrones Strategy + Factory) | 🚧 billetera y movimientos en curso |
-| `orders` / `history` | Carrito, pago atómico, estados del pedido e historial unificado | 🚧 en curso |
+| `logistics` | Pedidos de entrega con conductor (pendiente → aceptado → recogido → entregado) | ✅ base · envíos ligados a pedidos y viajes: Sprint 2 |
+| `wallet` | Billetera con saldo, recarga simulada (patrones Strategy + Factory) y movimientos inmutables | ✅ Increment 1 |
+| `orders` | Carrito, pago atómico (un pedido por vendedor) y estados del pedido; el dinero queda retenido hasta la entrega | ✅ Increment 1 |
+| `history` | Historial unificado de cada usuario, filtrable por tipo y fecha | ✅ Increment 1 |
 | `shared` | Seguridad (`SecurityConfig`, `CurrentUser`), errores en JSON, salud | ✅ |
 
 ### Seguridad
@@ -86,6 +90,11 @@ JWT_SECRET=un-secreto-de-desarrollo-de-al-menos-32-caracteres \
 | `GET /api/users/me`, `PATCH /api/users/me/shipping-address` | con sesión |
 | `POST /api/deliveries`, `GET /api/deliveries/mine` | cliente |
 | `GET /api/deliveries/available`, `GET /api/deliveries/assigned` | conductor |
+| `GET /api/wallet`, `POST /api/wallet/top-up` | cliente |
+| `GET /api/cart`, `POST /api/cart/items`, `DELETE /api/cart/items/{listingId}` | cliente |
+| `POST /api/orders/checkout`, `GET /api/orders`, `PATCH /api/orders/{id}/status` | cliente (comprador) |
+| `GET /api/sales`, `PATCH /api/sales/{id}/status` | vendedor (solo sus ventas) |
+| `GET /api/history?type=&from=&to=` | con sesión (solo su historial) |
 | `GET /api/health` | público |
 
 ## Estructura de carpetas
@@ -94,7 +103,7 @@ JWT_SECRET=un-secreto-de-desarrollo-de-al-menos-32-caracteres \
 SuperApp/
 ├── docker-compose.yml            # PostgreSQL + app: docker compose up --build
 ├── .github/workflows/ci.yml      # pruebas en cada pull request
-├── docs/                         # notas del proyecto (el Entregable 1 vive en el Drive del grupo)
+├── docs/                         # documento v2.0 del Increment 1 (el Entregable 1 vive en el Drive del grupo)
 └── backend/
     ├── Dockerfile                # build multi-stage (Maven → JRE)
     ├── pom.xml
@@ -104,12 +113,14 @@ SuperApp/
         │   ├── catalog/
         │   ├── logistics/
         │   ├── wallet/
+        │   ├── orders/
+        │   ├── history/
         │   └── shared/           # security · exception · controller
         ├── main/resources/
         │   ├── application.properties
         │   ├── db/migration/     # V1__…, V2__… (Flyway). A: V1–V9 · B: V10–V19
         │   └── static/index.html # frontend para celular
-        └── test/                 # pruebas unitarias y de API (MockMvc)
+        └── test/                 # pruebas unitarias, de API (MockMvc) y de concurrencia (Testcontainers)
 ```
 
 ## Cómo trabajamos con git
