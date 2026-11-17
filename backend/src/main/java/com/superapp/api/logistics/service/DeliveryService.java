@@ -13,6 +13,8 @@ import com.superapp.api.logistics.dto.CreateDeliveryRequest;
 import com.superapp.api.logistics.dto.DeliveryResponse;
 import com.superapp.api.logistics.dto.DeliveryStatusRequest;
 import com.superapp.api.logistics.domain.DeliveryOrder;
+import com.superapp.api.history.api.HistoryType;
+import com.superapp.api.history.api.IHistory;
 import com.superapp.api.catalog.domain.Listing;
 import com.superapp.api.catalog.domain.ListingStatus;
 import com.superapp.api.logistics.domain.DeliveryStatus;
@@ -36,6 +38,7 @@ public class DeliveryService {
     private final DeliveryOrderRepository orderRepository;
     private final UserRepository userRepository;
     private final ListingRepository listingRepository;
+    private final IHistory history;
 
     @Transactional
     public DeliveryResponse create(Long customerId, CreateDeliveryRequest request) {
@@ -85,7 +88,10 @@ public class DeliveryService {
         order.setStatus(DeliveryStatus.PENDING);
         order.setDeliveryAddress(address);
         order.setDeliveryFee(DELIVERY_FEE);
-        return toResponse(orderRepository.save(order));
+        DeliveryOrder saved = orderRepository.save(order);
+        history.record(customer.getId(), HistoryType.DELIVERY, "Pediste el domicilio " + saved.getId(),
+                saved.getTitle() + " · esperando conductor", null, reference(saved));
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -140,7 +146,46 @@ public class DeliveryService {
         }
 
         order.setStatus(request.status());
-        return toResponse(orderRepository.save(order));
+        DeliveryOrder saved = orderRepository.save(order);
+        recordStatus(saved);
+        return toResponse(saved);
+    }
+
+    /**
+     * Anota el cambio de estado en el historial del cliente y del conductor (FR-08), dentro de la misma
+     * transacción: si el cambio se deshace, el registro también. No lleva monto porque el domicilio
+     * no mueve dinero de la billetera.
+     */
+    private void recordStatus(DeliveryOrder order) {
+        Long customer = order.getCustomer().getId();
+        Long driver = order.getDriver() == null ? null : order.getDriver().getId();
+        String id = String.valueOf(order.getId());
+        String what = order.getTitle();
+        String ref = reference(order);
+        switch (order.getStatus()) {
+            case ACCEPTED -> {
+                history.record(customer, HistoryType.DELIVERY, "Un conductor aceptó tu domicilio " + id,
+                        what + " · " + order.getDriver().getFullName(), null, ref);
+                history.record(driver, HistoryType.DELIVERY, "Aceptaste la entrega " + id,
+                        what + " · recoger en " + order.getPickupAddress(), null, ref);
+            }
+            case PICKED_UP -> {
+                history.record(customer, HistoryType.DELIVERY, "Tu domicilio " + id + " va en camino", what, null, ref);
+                history.record(driver, HistoryType.DELIVERY, "Recogiste la entrega " + id, what, null, ref);
+            }
+            case DELIVERED -> {
+                history.record(customer, HistoryType.DELIVERY, "Recibiste tu domicilio " + id, what, null, ref);
+                history.record(driver, HistoryType.DELIVERY, "Entregaste la entrega " + id,
+                        what + " · ganancia $" + order.getDeliveryFee().toBigInteger(), null, ref);
+            }
+            case CANCELLED -> history.record(customer, HistoryType.DELIVERY, "Cancelaste el domicilio " + id,
+                    what, null, ref);
+            default -> { }
+        }
+    }
+
+    private static String reference(DeliveryOrder order) {
+        return "DELIVERY-" + order.getId();
     }
 
     private void requireStatus(DeliveryOrder order, DeliveryStatus expected, String message) {

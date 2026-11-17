@@ -26,6 +26,7 @@ h2{font-size:16px;font-weight:800;margin:18px 0 8px}
 .loc{text-align:left}.loc small{display:block;color:var(--mu);font-size:12px}.loc b{font-weight:800}
 .av{width:40px;height:40px;border-radius:50%;background:var(--pl);color:var(--p);font-weight:800;display:grid;place-items:center}
 .search{display:flex;align-items:center;gap:10px;background:var(--tint);border:1px solid var(--ln);border-radius:14px;padding:0 14px;height:48px}
+.prc{display:flex;gap:8px;margin-top:10px}.prc .in{min-height:44px;padding:10px 12px;font-size:15px;min-width:0}
 .search input{flex:1;border:0;background:none;outline:0;min-width:0}
 .search:focus-within{background:#fff;border-color:var(--p);box-shadow:0 0 0 3px var(--pl)}
 .ico{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
@@ -100,6 +101,7 @@ nav button[aria-current=page]{color:var(--p)}
   </div>
   <div class="note" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div><b>¿Necesitas algo?</b><div class="h" style="margin:0">Crea un pedido y un conductor lo lleva.</div></div><button class="btn sm" data-open="new" style="flex:none">Crear pedido</button></div>
   <div class="search"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Busca comida, mercado, tecnología…" aria-label="Buscar productos"></div>
+  <div class="prc" role="group" aria-label="Rango de precio"><input class="in" id="pmin" type="number" inputmode="numeric" min="0" placeholder="Precio mín." aria-label="Precio mínimo (COP)"><input class="in" id="pmax" type="number" inputmode="numeric" min="0" placeholder="Precio máx." aria-label="Precio máximo (COP)"></div>
   <div class="chips" id="chips" role="group" aria-label="Categorías"></div>
   <div class="grid" id="grid" aria-live="polite"></div>
  </section>
@@ -148,7 +150,7 @@ nav button[aria-current=page]{color:var(--p)}
  </section>
 <section class="view" id="v-ord" aria-label="Pedidos"><div class="vh"><h1>Pedidos</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div class="chips" id="otabs" role="group" aria-label="Carrito, compras y ventas" style="padding-top:0;margin-bottom:12px"></div><div id="ordList" aria-live="polite"></div></section>
  <section class="view" id="v-av" aria-label="Pedidos disponibles"><div class="vh"><h1>Disponibles</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="avList" aria-live="polite"></div></section>
- <section class="view" id="v-dl" aria-label="Mis entregas"><div class="vh"><h1>Mis entregas</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="dlSum"></div><div id="dlList" aria-live="polite"></div></section>
+ <section class="view" id="v-dl" aria-label="Mis entregas"><div class="vh"><h1>Mis entregas</h1><button class="btn s sm" data-refresh>Actualizar</button></div><div id="dlSum"></div><div id="dlList" aria-live="polite"></div><button class="btn s" data-open="his" style="margin-top:10px">Ver mi historial</button></section>
 <section class="view" id="v-new" aria-label="Crear pedido">
   <h1>Crear pedido</h1>
   <p class="h" style="margin:-8px 0 14px;font-size:14px">Cuéntanos qué necesitas y un conductor lo llevará a tu dirección.</p>
@@ -230,13 +232,17 @@ $('#av').onclick=$('#loc').onclick=()=>go('me');
 function chips(){$('#chips').innerHTML=['Todo',...CATS].map(c=>`<button class="chip" aria-pressed="${(c==='Todo'?'':c)===S.cat}" data-c="${c==='Todo'?'':c}">${c}</button>`).join('')}
 $('#chips').onclick=e=>{const b=e.target.closest('.chip');if(b){S.cat=b.dataset.c;chips();load()}};
 let dt;$('#q').oninput=e=>{clearTimeout(dt);dt=setTimeout(()=>{S.q=e.target.value;load()},300)};
+$('#pmin').oninput=$('#pmax').oninput=()=>{clearTimeout(dt);dt=setTimeout(load,400)};
+function priceQ(){const a=$('#pmin').value,b=$('#pmax').value;return(a!==''?`&minPrice=${+a}`:'')+(b!==''?`&maxPrice=${+b}`:'')}
 async function load(){
  head();const g=$('#grid');g.innerHTML='<div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div>';
- try{S.items=await api(`/listings?keyword=${encodeURIComponent(S.q)}&category=${encodeURIComponent(S.cat)}`)}
+ const a=$('#pmin').value,b=$('#pmax').value;
+ if(a!==''&&b!==''&&+a>+b){g.innerHTML='<div class="empty">El precio mínimo no puede ser mayor que el máximo.</div>';return}
+ try{S.items=await api(`/listings?keyword=${encodeURIComponent(S.q)}&category=${encodeURIComponent(S.cat)}${priceQ()}`)}
  catch(e){g.innerHTML=`<div class="empty">${esc(e.message)}<br><br><button class="btn s sm" id="retry">Reintentar</button></div>`;$('#retry').onclick=load;return}
  g.innerHTML=S.items.length?S.items.map(l=>`<button class="card" data-id="${l.id}">${img(l)}<div class="cb"><b>${COP(l.price)}</b>${esc(l.title)}<span>${esc(l.sellerName)}</span></div></button>`).join(''):
  `<div class="empty">No encontramos productos con esos filtros.<br><br><button class="btn s sm" id="clr">Limpiar filtros</button></div>`;
- const c=$('#clr');if(c)c.onclick=()=>{S.q='';S.cat='';$('#q').value='';chips();load()};
+ const c=$('#clr');if(c)c.onclick=()=>{S.q='';S.cat='';$('#q').value='';$('#pmin').value='';$('#pmax').value='';chips();load()};
 }
 const img=l=>l.imageUrl?`<img class="ph" src="${esc(l.imageUrl)}" alt="${esc(l.title)}" loading="lazy" onerror="this.outerHTML='<div class=ph>${esc(l.title[0]||'?')}</div>'">`:`<div class="ph">${esc(l.title[0]||'?')}</div>`;
 $('#grid').onclick=e=>{const c=e.target.closest('.card');if(!c)return;const l=S.items.find(x=>x.id==c.dataset.id);
@@ -398,8 +404,8 @@ $('#ordList').addEventListener('click',async e=>{
  catch(err){toast(err.message);b.disabled=false}
 });
 /* ---------- Historial (FR-08) ---------- */
-const HT=[['','Todo'],['PURCHASE','Compras'],['SALE','Ventas'],['WALLET','Billetera']],HN={PURCHASE:'Compra',SALE:'Venta',WALLET:'Billetera',DELIVERY:'Domicilio'};
-function htabs(){$('#htabs').innerHTML=HT.filter(([k])=>k!=='SALE'||has('SELLER')).map(([k,n])=>`<button class="chip" aria-pressed="${k===(S.htype||'')}" data-ht="${k}">${n}</button>`).join('')}
+const HT=[['','Todo'],['PURCHASE','Compras'],['SALE','Ventas'],['WALLET','Billetera'],['DELIVERY','Domicilios']],HN={PURCHASE:'Compra',SALE:'Venta',WALLET:'Billetera',DELIVERY:'Domicilio'};
+function htabs(){$('#htabs').innerHTML=HT.filter(([k])=>S.user?.mode==='DRIVER'?(k===''||k==='DELIVERY'):(k!=='SALE'||has('SELLER'))).map(([k,n])=>`<button class="chip" aria-pressed="${k===(S.htype||'')}" data-ht="${k}">${n}</button>`).join('')}
 $('#htabs').onclick=e=>{const b=e.target.closest('[data-ht]');if(b){S.htype=b.dataset.ht;hist()}};
 $('#hFrom').onchange=$('#hTo').onchange=()=>hist();
 function hisItem(h){
