@@ -121,14 +121,17 @@ nav button[aria-current=page]{color:var(--p)}
  </section>
 
  <section class="view" id="v-pay" aria-label="Billetera">
-  <h1>Billetera</h1>
-  <div class="wal"><div><small>Total a pagar</small><div class="amt" id="walAmt">$0</div></div><div class="r"><span id="walName">Invitado</span><span id="walM">Tarjeta</span></div></div>
-  <div class="f" style="margin-top:16px"><label for="am">Monto (COP)</label><input class="in" id="am" type="number" inputmode="numeric" min="1" placeholder="Escribe un monto o elige un producto"></div>
-  <h2>Método de pago</h2>
-  <div id="opts" role="radiogroup" aria-label="Método de pago"></div>
-  <button class="btn" id="payBtn">Pagar</button>
-  <p class="h" style="margin-top:8px">Pagos de práctica: no se mueve dinero real.</p>
+  <div class="vh"><h1>Billetera</h1><button class="btn s sm" data-refresh>Actualizar</button></div>
+  <div class="wal"><div><small>Saldo disponible</small><div class="amt" id="walAmt" aria-live="polite">$0</div></div><div class="r"><span id="walName">Invitado</span><span>SuperApp</span></div></div>
+  <div id="walNeed" style="margin-top:14px"></div>
+  <h2>Recargar</h2>
+  <div class="f"><label for="am">Monto a recargar (COP)</label><input class="in" id="am" type="number" inputmode="numeric" min="1000" step="1000" placeholder="Mínimo $1.000"></div>
+  <div id="opts" role="radiogroup" aria-label="Método de pago de la recarga"></div>
+  <button class="btn" id="payBtn">Recargar</button>
+  <p class="h" style="margin-top:8px">Recargas de práctica: no se mueve dinero real.</p>
   <div id="res" aria-live="polite"></div>
+  <h2>Movimientos</h2>
+  <div id="movList" aria-live="polite"></div>
  </section>
 
  <section class="view" id="v-me" aria-label="Perfil">
@@ -205,7 +208,7 @@ function go(k){
  $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+k));
  $$('#nav button').forEach(b=>b.dataset.go===k?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
  $('main').scrollTop=0;
- if(LOAD[k])LOAD[k]();if(k==='pub')gate();if(k==='new')newForm();if(k==='pay')wallet();if(k==='me')profile();
+ if(LOAD[k])LOAD[k]();if(k==='pub')gate();if(k==='new')newForm();if(k==='me')profile();if(k!=='pay')S.need=null;
 }
 $('#nav').onclick=e=>{const b=e.target.closest('button');b&&go(b.dataset.go)};
 const has=r=>S.user?.roles?.includes(r);
@@ -230,7 +233,7 @@ async function load(){
 const img=l=>l.imageUrl?`<img class="ph" src="${esc(l.imageUrl)}" alt="${esc(l.title)}" loading="lazy" onerror="this.outerHTML='<div class=ph>${esc(l.title[0]||'?')}</div>'">`:`<div class="ph">${esc(l.title[0]||'?')}</div>`;
 $('#grid').onclick=e=>{const c=e.target.closest('.card');if(!c)return;const l=S.items.find(x=>x.id==c.dataset.id);
  $('#sp').innerHTML=`<button class="btn s sm" id="x">Cerrar</button>${img(l)}<span class="pill">${esc(l.category)}</span><h1 style="margin:4px 0">${esc(l.title)}</h1><div style="font-size:22px;font-weight:800;color:var(--p)">${COP(l.price)}</div><p class="h" style="margin:2px 0 10px">Vendido por ${esc(l.sellerName)}</p><p style="margin-bottom:16px">${esc(l.description)}</p>${l.sellerId===uid()?'<div class="note">Este producto lo publicaste tú.</div>':'<button class="btn" id="buy">Pedir ahora</button><button class="btn s" id="wp" style="margin-top:10px">Pagar con billetera</button>'}`;
- $('#sheet').classList.add('on');$('#x').focus();$('#x').onclick=closeS;if($('#wp'))$('#wp').onclick=()=>{closeS();$('#am').value=l.price;go('pay')};
+ $('#sheet').classList.add('on');$('#x').focus();$('#x').onclick=closeS;if($('#wp'))$('#wp').onclick=()=>{closeS();S.need={title:l.title,price:+l.price};$('#am').value='';go('pay')};
  if($('#buy'))$('#buy').onclick=async()=>{
   if(!S.user.addressLine){closeS();toast('Agrega tu dirección de entrega para pedir');return go('me')}
   const b=$('#buy');b.disabled=true;b.textContent='Enviando…';
@@ -284,21 +287,37 @@ $('#pubBtn').onclick=async()=>{
  finally{b.disabled=false;if(b.textContent.endsWith('…'))b.textContent=txt}
 };
 
-/* ---------- Billetera ---------- */
+/* ---------- Billetera (FR-07): saldo real, recarga simulada y movimientos ---------- */
 const amt=()=>+$('#am').value||0;
-function wallet(){
- head();$('#walName').textContent=S.user?.fullName||'Invitado';$('#walM').textContent=METHODS[S.pay].n;$('#walAmt').textContent=COP(amt());$('#res').innerHTML='';
- $('#opts').innerHTML=Object.entries(METHODS).map(([k,m])=>`<button class="opt" role="radio" aria-checked="${k===S.pay}" data-m="${k}"><span class="lg">${m.l}</span><div><b>${m.n}</b><span>${m.d}</span></div></button>`).join('');
+const MOV={TOP_UP:'Recarga',PAYMENT:'Pago',INCOME:'Ingreso por venta',REFUND:'Reembolso'};
+const when=d=>new Date(d).toLocaleString('es-CO',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+function opts(){$('#opts').innerHTML=Object.entries(METHODS).map(([k,m])=>`<button class="opt" role="radio" aria-checked="${k===S.pay}" data-m="${k}"><span class="lg">${m.l}</span><div><b>${m.n}</b><span>${m.d}</span></div></button>`).join('')}
+function need(bal){
+ const n=S.need,el=$('#walNeed');if(!n){el.innerHTML='';return}
+ el.innerHTML=+bal>=+n.price?`<div class="note"><b>${esc(n.title)}</b> cuesta ${COP(n.price)} y te alcanza el saldo.</div>`
+  :`<div class="note"><b>${esc(n.title)}</b> cuesta ${COP(n.price)}. Te faltan <b>${COP(n.price-bal)}</b>: recarga abajo.</div>`;
 }
-$('#am').oninput=()=>$('#walAmt').textContent=COP(amt());
-$('#opts').onclick=e=>{const b=e.target.closest('.opt');if(b){S.pay=b.dataset.m;wallet()}};
+function movItem(m){
+ const pos=+m.signedAmount>0;
+ return `<div class="mi"><div class="t"><b>${esc(m.description)}</b><span>${MOV[m.type]||m.type} · ${when(m.createdAt)} · saldo ${COP(m.balanceAfter)}</span></div><div style="font-weight:800;white-space:nowrap;color:var(${pos?'--ok':'--er'})">${pos?'+':'−'}${COP(m.amount)}</div></div>`;
+}
+async function wallet(quiet){
+ head();$('#walName').textContent=S.user?.fullName||'Invitado';opts();
+ if(!quiet){$('#res').innerHTML='';$('#movList').innerHTML='<div class="sk" style="height:64px;margin-bottom:10px"></div>'.repeat(2)}
+ try{const w=await api('/wallet');$('#walAmt').textContent=COP(w.balance);need(w.balance);
+  if(S.need&&!amt()&&+w.balance<+S.need.price)$('#am').value=Math.max(1000,Math.ceil((S.need.price-w.balance)/1000)*1000);
+  $('#movList').innerHTML=w.movements.length?w.movements.map(movItem).join(''):'<div class="empty">Todavía no tienes movimientos. Haz tu primera recarga.</div>'}
+ catch(e){$('#walAmt').textContent='—';$('#movList').innerHTML=`<div class="empty">${esc(e.message)}</div>`}
+}
+$('#opts').onclick=e=>{const b=e.target.closest('.opt');if(b){S.pay=b.dataset.m;opts()}};
 $('#payBtn').onclick=async()=>{
- const a=amt(),r=$('#res');if(!(a>0)){r.innerHTML='<div class="res no"><b>Falta el monto</b>Escribe cuánto vas a pagar.</div>';$('#am').focus();return}
+ const a=amt(),r=$('#res');if(!(a>0)){r.innerHTML='<div class="res no"><b>Falta el monto</b>Escribe cuánto quieres recargar.</div>';$('#am').focus();return}
  const b=$('#payBtn');b.disabled=true;b.textContent='Procesando…';
- try{const d=await api('/payments/simulate',{method:'POST',body:JSON.stringify({method:S.pay,amount:a})});
-  r.innerHTML=d.approved?`<div class="res ok"><b>Pago aprobado</b>Comisión: ${COP(d.fee)}<br>Referencia: ${esc(d.transactionId)}<br>${esc(d.message)}</div>`:`<div class="res no"><b>Pago rechazado</b>${esc(d.message)} Prueba con otro método o un monto mayor.</div>`}
- catch(e){r.innerHTML=`<div class="res no"><b>No se pudo pagar</b>${esc(e.message)}</div>`}
- finally{b.disabled=false;b.textContent='Pagar'}
+ try{const d=await api('/wallet/top-up',{method:'POST',body:JSON.stringify({method:S.pay,amount:a})});
+  r.innerHTML=`<div class="res ok"><b>Recarga aprobada</b>Nuevo saldo: ${COP(d.balance)}<br>Comisión del proveedor (simulada): ${COP(d.fee)}<br>Referencia: ${esc(d.movement.reference)}</div>`;
+  $('#am').value='';await wallet(true)}
+ catch(e){r.innerHTML=`<div class="res no"><b>No se pudo recargar</b>${esc(e.message)}</div>`}
+ finally{b.disabled=false;b.textContent='Recargar'}
 };
 
 /* ---------- Perfil ---------- */
@@ -327,7 +346,7 @@ async function fill(id,path,empty,fn,quiet){
  try{const d=await api(path);el.innerHTML=d.length?d.map(fn).join(''):`<div class="empty">${empty}</div>`;return d}
  catch(e){el.innerHTML=`<div class="empty">${esc(e.message)}</div>`}
 }
-const LOAD={home:load,
+const LOAD={home:load,pay:wallet,
  ord:q=>fill('#ordList','/deliveries/mine','Aún no tienes pedidos. Crea el primero con el botón de arriba.',o=>oCard(o,'ord',o.status==='PENDING'?ob(o.id,'CANCELLED','Cancelar pedido','s'):''),q),
  av:q=>fill('#avList','/deliveries/available','No hay pedidos por ahora. Esta lista se actualiza sola.',o=>oCard(o,'av',ob(o.id,'ACCEPTED','Aceptar entrega')),q),
  dl:async q=>{
